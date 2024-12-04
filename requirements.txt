@@ -1,0 +1,16 @@
+aiomysql
+multipledispatch
+mysql-connector-python
+pandas
+pymysql
+pyyaml
+gguf>=0.5
+numpy>=1.26
+pillow
+matplotlib
+rasterio
+scipy
+numpy
+pandas
+openpyxl
+torch
