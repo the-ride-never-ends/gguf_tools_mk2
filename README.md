@@ -18,3 +18,4 @@ A suite of tools to manipulate GGUF, Torch, and other transformers model types.
 - multipledispatch
 
 ## Usage
+Click on "start.bat" to run the program. Follow the on-screen instructions to select the tool you want to use and provide the necessary inputs.
