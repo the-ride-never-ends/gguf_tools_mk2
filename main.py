@@ -5,12 +5,14 @@ import importlib
 import os
 import sys
 
+
 from config.config import PROJECT_ROOT
 from logger.logger import Logger
 logger = Logger(logger_name=__name__)
 
 
 GGUF_TOOLS_PATH = os.path.join(PROJECT_ROOT, "gguf_tools")
+GGUF_VISUALIZERS_PATH = os.path.join(PROJECT_ROOT, "gguf_visualizers")
 
 from gguf_visualizers.image_diff_heatmapper_mk2 import ImageDiffHeatMapperMk2, image_diff_heatmapper_mk2_comfy_ui_node
 from gguf_visualizers.gguf_tensor_to_image import GgufTensorToImage, gguf_tensor_to_image_comfy_ui_node
@@ -41,18 +43,33 @@ def _get_parser_help_as_list(parser: argparse.ArgumentParser) -> list[str]:
 
     return help_list
 
+def get_files_in_directory(path: str):
+    return [
+        file for file in os.listdir(path) if os.path.isfile(os.path.join(path, file))
+    ]
+
+def get_folders_in_directory(path: str):
+    return [
+        file for file in os.listdir(path) if not os.path.isfile(os.path.join(path, file))
+    ]
 
 def _choose_gguf_tool() -> str:
 
-    available_modules = sorted(
-        tool for tool in os.listdir(GGUF_TOOLS_PATH)
-    )
+    available_modules = []
+    for path in [GGUF_TOOLS_PATH, GGUF_VISUALIZERS_PATH]:
+        _available_modules = sorted(
+            tool for tool in os.listdir(path)
+            if os.path.isfile(os.path.join(path, tool))
+        )
+        available_modules.extend(_available_modules)
+
     separator = "*" * 20
     tool_list = "\n".join(f"- {tool}" for tool in available_modules)
-    print(f"{separator}\nAvailable gguf_tools:\n{tool_list}\n{separator}")
+    logger.debug(f"{separator}\nAvailable gguf_tools:\n{tool_list}\n{separator}")
 
     gguf_tool = input("\nEnter the gguf_tool you want to use: ")
     gguf_tool = gguf_tool.strip()
+    logger.debug(f"gguf_tool: {gguf_tool}")
 
     # If there are only spaces in gguf_tool, raise a value error.
     if not gguf_tool:
@@ -65,21 +82,33 @@ def _choose_gguf_tool() -> str:
         return gguf_tool
 
 
-def _choose_gguf_tools_arguments(gguf_tool: str) -> None:
+def _choose_gguf_tools_arguments(gguf_tool: str) -> dict:
 
-    gguf_tool_name = gguf_tool.__name__
-    gguf_tool = importlib.import_module(f"gguf_tools.{gguf_tool}.main")
+    gguf_tool_name = gguf_tool.__str__()
+    try:
+        gguf_tool = importlib.import_module(f"gguf_tools.{gguf_tool_name}")
+    except ImportError:
+        try:
+            gguf_tool = importlib.import_module(f"gguf_visualizers.{gguf_tool_name}")
+        except ImportError as e:
+            logger.error(f"Failed to import module: {e}")
+            return None
+
+    logger.debug(f"gguf_tool: {gguf_tool}\ntype: {type(gguf_tool)}",f=True)
     parser: argparse.ArgumentParser = gguf_tool.create_parser()
 
     # Create a list of the helpers arguments.
-    parser_help_as_list = _get_parser_help_as_list()
+    parser_help_as_list = _get_parser_help_as_list(parser)
     arg_list = "\n".join(f"- {arg}" for arg in parser_help_as_list)
 
     print(f"Name: {gguf_tool_name}")
     print(f"Description: {parser.description}")
-    print(f"\nArguments for {gguf_tool}\n{arg_list}")
+    print(f"\nHelp list for {gguf_tool}\n{arg_list}")
 
-    selected_args = input("\nEnter the arguments you want to use: ")
+    selected_args = input("""
+        WARNING: YAML file constants take precedence over command line arguments
+        Enter the arguments you want to run the tool with (comma-separated): 
+    """)
     # Get and validate user input
     while True:
         selected_args = input("\nEnter the arguments you want to run the tool with (comma-separated): ").strip()
@@ -94,8 +123,10 @@ def _choose_gguf_tools_arguments(gguf_tool: str) -> None:
         if invalid_modules:
             print(f"Invalid arg(s): {', '.join(invalid_modules)}\nPlease try again.")
             continue
-        
+
         break
+
+    return {arg: '' for arg in chosen_args}
 
 
 async def main():
@@ -106,11 +137,11 @@ async def main():
     kwargs = _choose_gguf_tools_arguments(gguf_tool)
 
     if gguf_tool == "image_diff_heatmapper_mk2":
-        run = ImageDiffHeatMapperMk2(args=None, **kwargs)
+        run = ImageDiffHeatMapperMk2(**kwargs)
         run.image_diff_heatmapper_mk2()
 
     if gguf_tool == "image_diff_heatmapper_mk2":
-        run = GgufTensorToImage(args=None, **kwargs)
+        run = GgufTensorToImage(**kwargs)
         run.gguf_tensor_to_image()
 
     logger.info("End __main__")

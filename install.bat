@@ -15,6 +15,7 @@ if exist venv (
     REM Create a virtual environment if it doesn't exist
     echo Creating a virtual environment with Python 3.11...
     python3.11 -m venv venv
+    REM Verify Python version compatibility 
 )
 
 REM Activate the virtual environment
@@ -23,8 +24,11 @@ call venv\Scripts\activate.bat
 
 REM Install required packages from requirements.txt
 if exist requirements.txt (
+    REM Check if the error is environment-specific
+    python3.11 -m pip install -r requirements.txt
+
     echo Installing required packages...
-    pip install -r requirements.txt
+    REM pip install -r requirements.txt
 ) else (
     echo requirements.txt not found. Skipping package installation.
 )

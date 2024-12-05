@@ -1,3 +1,5 @@
+pytest
+pytest-asyncio
 aiomysql
 multipledispatch
 mysql-connector-python
@@ -10,7 +12,5 @@ pillow
 matplotlib
 rasterio
 scipy
-numpy
-pandas
 openpyxl
 torch

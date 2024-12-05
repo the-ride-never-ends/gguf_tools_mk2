@@ -1,5 +1,6 @@
 import os
 
+
 from .utils.config._get_config import get_config as config
 from logger.logger import Logger
 logger = Logger(logger_name=__name__)

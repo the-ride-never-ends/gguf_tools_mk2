@@ -12,6 +12,7 @@ output/*
 
 database/
 tests/
+private/
 
 # IDE files
 .vscode/

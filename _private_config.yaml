@@ -1,0 +1,3 @@
+PRIVATE_FOLDER_PATHS:
+  INPUT_FOLDER: "input"
+  OUTPUT_FOLDER: "output"
