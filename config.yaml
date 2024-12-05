@@ -1,123 +1,38 @@
 SYSTEM:
   SKIP_STEPS: False
   FILENAME_PREFIX: "gguf_tools_mk2"
-
 FILENAMES:
   INPUT_FILENAME: ""
-
 GGUF_TENSOR_TO_IMAGE: # Tensor to image converter for LLM models (GGUF and PyTorch)
   MODEL: "llama-2-7b.Q8_0.gguf" # model filename, can be GGUF or PyTorch (if PyTorch support available)
   MODEL_TYPE: "gguf"
   TENSOR: "blk.2.ffn_down.weight" # Tensor name, may be specified multiple times UNLESS --match-glob or --match-regex is used
-  COLOR_RAMP_TYPE: "continuous" # "Color ramp type, Can be discrete or continuous"
-  OUTPUT: "" # "Output file, will be prefixed with the tensor name if multiple tensor names are specified"
-  SHOW_WITH: str = config("SHOW_WITH")
-  MATCH_GLOB: bool = config("MATCH_GLOB")
-  MATCH_REGEX: bool = config("MATCH_REGEX")
-  MATCH_1D: bool = config("MATCH_1D")
-  ADJUST_1D_ROWS: int = config("ADJUST_1D_ROWS")
-  SCALE: float = config("SCALE")
-  FORCE: bool = config("FORCE")
-  MODE: str = config("MODE")
-
-
-    parser.add_argument(
-        "--color_ramp_type",
-        choices=["continuous", "discrete"],
-        default="continuous",
-        help="Color ramp type, Default: continuous",
-    )
-    output_group = parser.add_argument_group(
-        "output",
-        "At least one of the following must be specified:",
-    )
-    output_group.add_argument(
-        "--output",
-        type=Path,
-        help="Output file, will be prefixed with the tensor name if multiple tensor names are specified",
-    )
-    output_group.add_argument(
-        "--show-with",
-        help="""
-            Show the result with the specified application.
-            WARNING: If processing multiple tensors and your image application
-            does not block then you will end up with a bunch of huge images displayed at the same time""",
-    )
-    wildcard_group = parser.add_mutually_exclusive_group()
-    wildcard_group.add_argument(
-        "--match-glob",
-        action="store_true",
-        help="Interpret tensor name as a glob, so wildcards like blk.0.* will work",
-    )
-    wildcard_group.add_argument(
-        "--match-regex",
-        action="store_true",
-        help="Interpret tensor name as a regex, so regular expressions like ^blk\\.[012]\\.attn will work",
-    )
-
-    parser.add_argument(
-        "--match-1d",
-        action="store_true",
-        help="When using a wildcard, also match 1 dimensional tensors",
-    )
-    parser.add_argument(
-        "--adjust-1d-rows",
-        type=int,
-        help="""
-        Instead of rendering 1D tensors as a wide image with one row, rearrange into multiple rows.
-        For example, if we have a 1D tensor 3,200 elements and specify "--adjust-1d-rows 32",
-        the output image will have dimensions 100x32. Note: The tensor size must be divisible by
-        the specified value.
-        """,
-    )
-    parser.add_argument(
-        "--scale",
-        type=float,
-        default=1.0,
-        help="Scale the image. Default: 1.0 (no scaling)",
-    )
-    parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Force overwriting the output file if it already exists",
-    )
-    parser.add_argument(
-        "--mode",
-        choices=["devs-overall", "devs-rows", "devs-cols"],
-        default="devs-overall",
-        help="""
-        Output modes (see below). Default: devs-overall
-        NOTE: If the program is started using start.bat
-        the options "mean-devs-overall", "mean-devs-rows", "mean-devs-cols" are available as aliases for
-        "devs-overall", "devs-rows", "devs-cols", as well as "median-devs-overall", "median-devs-rows", "median-devs-cols"
-        overall: Calculate the mean and standard deviation over the entire tensor.
-        rows   : Same as above, except the calculation is based on rows.
-        cols   : Same as above, except the calculation is based on columns.
-        """,
-    )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-IMAGE_DIFF_HEATMAPPER_MK2:
-  description: "Produces heatmaps of differences in tensor values for LLM models (GGUF and PyTorch)"
-  epilog: |
-    Information on output modes:
-      devs-*:
-        overall: Calculates differences in tensor values between two models with the same foundation architecture.
-                By default, output will be a grayscale raster that has the same dimensions as the tensors.
-        rows   : Same as above, except the calculation is based on rows.
-        cols   : Same as above, except the calculation is based on columns.
+  COLOR_RAMP_TYPE: "continuous" # Color ramp type, Can be discrete or continuous
+  OUTPUT: "" # Output file, will be prefixed with the tensor name if multiple tensor names are specified
+  SHOW_WITH: "auto" # Show the result with the specified application. WARNING: If processing multiple tensors and your image application does not block then you will end up with a bunch of huge images displayed at the same time
+  MATCH_GLOB: True # Interpret tensor name as a glob, so wildcards like blk.0.* will work
+  MATCH_REGEX: True # Interpret tensor name as a regex, so regular expressions like ^blk\\.[012]\\.attn will work
+  MATCH_1D: True # When using a wildcard, also match 1 dimensional tensors
+  ADJUST_1D_ROWS: 32 # Instead of rendering 1D tensors as a wide image with one row, rearrange into multiple rows. For example, if we have a 1D tensor 3,200 elements and specify "--adjust-1d-rows 32", the output image will have dimensions 100x32. Note The tensor size must be divisible by the specified value.
+  SCALE: 1.0 # Scale the image. Default: 1.0 (no scaling)
+  FORCE: True # "Force overwriting the output file if it already exists"
+  MODE: "mean-devs-overall"
+  #     Output modes (see below). Default: devs-overall
+  #     NOTE: If the program is started using start.bat
+  #     the options "mean-devs-overall", "mean-devs-rows", "mean-devs-cols" are available as aliases for
+  #     "devs-overall", "devs-rows", "devs-cols", as well as "median-devs-overall", "median-devs-rows", "median-devs-cols"
+  #     overall: Calculate the mean and standard deviation over the entire tensor.
+  #     rows   : Same as above, except the calculation is based on rows.
+  #     cols   : Same as above, except the calculation is based on columns.
+  #     """,
+  # )
+IMAGE_DIFF_HEATMAPPER_MK2: # Produces heatmaps of differences in tensor values for LLM models (GGUF and PyTorch)
+  # Information on output modes:
+  #   devs-*:
+  #     overall: Calculates differences in tensor values between two models with the same foundation architecture.
+  #             By default, output will be a grayscale raster that has the same dimensions as the tensors.
+  #     rows   : Same as above, except the calculation is based on rows.
+  #     cols   : Same as above, except the calculation is based on columns.
   MODEL_FILE1: "{{ model_file1 }}" # Filename for the first model, can be GGUF or PyTorch (if PyTorch support available)"
   MODEL_FILE2: "{{ model_file2 }}" # Filename for the second model, can be GGUF or PyTorch (if PyTorch support available)"
   TENSOR_NAME: "{{ tensor_name }}" # Tensor name, must be from models with the same foundation architecture for the differences to be valid.
