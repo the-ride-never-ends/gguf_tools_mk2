@@ -32,7 +32,8 @@ def get_config(path:str, constant:str) -> Any | bool:
     for i, key in enumerate(keys):
         if isinstance(current_data, dict) and key in current_data:
             if i == len(keys) - 1:
-                print(f"Config {constant} from {'.'.join(keys[:i+1])} set to {current_data[key]}")
+                print("***")
+                print(f"{'.'.join(keys[:i+1])} | {current_data[key]}")
                 return current_data[key]
             else:
                 current_data = current_data[key]

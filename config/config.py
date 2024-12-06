@@ -29,7 +29,7 @@ try:
     INPUT_FOLDER: str = config(path, 'INPUT_FOLDER') or os.path.join(MAIN_FOLDER, "input")
     OUTPUT_FOLDER: str = config(path, 'OUTPUT_FOLDER') or os.path.join(MAIN_FOLDER, "output")
 
-    logger.info("YAML configs loaded.")
+    print("YAML configs loaded.")
 
 except KeyError as e:
     logger.exception(f"Missing configuration item: {e}")

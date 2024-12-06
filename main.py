@@ -14,8 +14,8 @@ logger = Logger(logger_name=__name__)
 GGUF_TOOLS_PATH = os.path.join(PROJECT_ROOT, "gguf_tools")
 GGUF_VISUALIZERS_PATH = os.path.join(PROJECT_ROOT, "gguf_visualizers")
 
-from gguf_visualizers.image_diff_heatmapper_mk2 import ImageDiffHeatMapperMk2
-from gguf_visualizers.gguf_tensor_to_image import GgufTensorToImage
+from gguf_visualizers.tensor_comparison_to_image import TensorComparisonToImage
+from gguf_visualizers.tensor_to_image import TensorToImage
 
 
 def _get_parser_help_as_list(parser: argparse.ArgumentParser) -> list[str]:
@@ -75,11 +75,12 @@ def _choose_gguf_tool() -> str:
     available_modules = []
     for path in [GGUF_TOOLS_PATH, GGUF_VISUALIZERS_PATH]:
         _available_modules = sorted(
-            tool for tool in os.listdir(path)
-            if os.path.isfile(os.path.join(path, tool))
+            # tool for tool in os.listdir(path)
+            # if os.path.isfile(os.path.join(path, tool))
+            os.path.splitext(tool)[0] for tool in os.listdir(path)
+            if os.path.isfile(os.path.join(path, tool)) and tool.endswith('.py')
         )
         available_modules.extend(_available_modules)
-
     tool_list = "\n".join(f"{i}. {tool}" for i, tool in enumerate(available_modules, start=1))
 
     logger.info(f"Available gguf_tools:\n{tool_list}",f=True)
@@ -168,15 +169,15 @@ async def main():
     logger.debug(f"gguf_tool: {gguf_tool}")
     #kwargs = {} # _choose_gguf_tools_arguments(gguf_tool)
 
-    if "image_diff_heatmapper_mk2" in gguf_tool:
-        logger.info("Loading image_diff_heatmapper_mk2...")
-        run = ImageDiffHeatMapperMk2()
-        run.image_diff_heatmapper_mk2()
+    if "tensor_comparison_to_image" in gguf_tool:
+        logger.info("Loading tensor_comparison_to_image...")
+        run = TensorComparisonToImage()
+        run.tensor_comparison_to_image()
 
-    if "gguf_tensor_to_image" in gguf_tool:
-        logger.info("Loading gguf_tensor_to_image...")
-        run = GgufTensorToImage()
-        run.gguf_tensor_to_image()
+    if "tensor_to_image" in gguf_tool:
+        logger.info("Loading tensor_to_image...")
+        run = TensorToImage()
+        run.tensor_to_image()
 
     logger.info("End __main__")
 

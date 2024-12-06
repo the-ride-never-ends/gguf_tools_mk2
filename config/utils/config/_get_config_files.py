@@ -36,7 +36,7 @@ def get_config_files() -> dict:
 
     print(f"top_level_dir: {top_level_dir}")
     print(f"config_module_dir: {config_module_dir}")
-    config_filenames = ["config.yaml", "private_config.yaml", "_private_config.yaml"]
+    config_filenames = ["config.yaml", "_private_config.yaml", "private_config.yaml", ] # NOTE ORDER MATTERS FOR LISTS.
     config_dict = {}
 
     for filename in config_filenames:

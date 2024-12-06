@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Produce heatmaps of differences in tensor values for LLM models (GGUF and PyTorch)"""
+"""Produce heatmaps of differences in tensor values for AI models (GGUF and PyTorch)"""
 from __future__ import annotations
 
 import argparse
@@ -16,7 +16,7 @@ import numpy.typing as npt
 from PIL import Image
 
 
-from gguf_visualizers.gguf_tensor_to_image import GGUFModel, TorchModel, Model
+from gguf_visualizers.tensor_to_image import GGUFModel, TorchModel, Model
 from .utils._have_the_same_file_extension import _have_the_same_file_extension
 from .utils._check_if_array_was_normalized_correctly import _check_if_array_was_normalized_correctly
 from .utils._right_now import _right_now
@@ -27,7 +27,7 @@ from .utils.find_this_file_under_this_directory_and_return_the_files_path import
 from .utils.write_array_to_geotiff import write_array_to_geotiff
 
 
-from config.config import OUTPUT_FOLDER
+from config.config import OUTPUT_FOLDER, INPUT_FOLDER
 from logger.logger import Logger
 logger = Logger(logger_name=__name__)
 
@@ -47,7 +47,7 @@ def comfyui_node():
 
 
 #@comfyui_node
-def image_diff_heatmapper_mk2_comfy_ui_node(
+def tensor_comparison_to_image_comfy_ui_node(
                                             model_file1: str, 
                                             model_file2: str, 
                                             tensor_name: str, 
@@ -61,7 +61,7 @@ def image_diff_heatmapper_mk2_comfy_ui_node(
         Args:
             model_file1 (str): Path to the first model file. Can be a GGUF or PyTorch model.
         """
-        run = ImageDiffHeatMapperMk2(
+        run = TensorComparisonToImage(
             model_file1=model_file1, 
             model_file2=model_file2, 
             tensor_name=tensor_name,
@@ -69,21 +69,24 @@ def image_diff_heatmapper_mk2_comfy_ui_node(
             color_mode=color_mode,
             output_name=output_name
             )
-        run.image_diff_heatmapper_mk2()
+        run.tensor_comparison_to_image()
 
         return {"ui": {"images": [run.heatmap_image]}}
 
 
 
 
-class ImageDiffHeatMapperMk2:
+class TensorComparisonToImage:
 
-    SUPPORTED_IMAGE_TYPES = ('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff')
+    SUPPORTED_IMAGE_TYPES = ('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.geotiff', '.tif')
 
     def __init__(self, **kwargs):
 
-        self.model_file1: str = MODEL_FILE_PATH1 or kwargs.pop("model_file1")
-        self.model_file2: str = MODEL_FILE_PATH2 or kwargs.pop("model_file2")
+        model_path1 = MODEL_FILE_PATH1 or kwargs.pop("model_file1")
+        model_path2 = MODEL_FILE_PATH2 or kwargs.pop("model_file2")
+
+        self.model_file1: str = os.path.join(INPUT_FOLDER, model_path1.lstrip("/\\"))
+        self.model_file2: str = os.path.join(INPUT_FOLDER, model_path2.lstrip("/\\"))
         self.type_check_model_files()
 
         self.tensor_name: str = TENSOR_NAME or kwargs.pop("tensor_name")
@@ -97,7 +100,8 @@ class ImageDiffHeatMapperMk2:
             "output_name", 
             f"diff_heatmap_{os.path.basename(self.model_file1)}_and_{os.path.basename(self.model_file1)}_{_right_now()}.png"
         )
-        self.output_path: str = find_this_file_under_this_directory_and_return_the_files_path(OUTPUT_FOLDER, self.output_name)
+        # find_this_file_under_this_directory_and_return_the_files_path
+        self.output_path: str = os.path.join(OUTPUT_FOLDER, self.output_name)
 
         # If the image path does not end with a file-type, default to png
         if not self.output_path.lower().endswith(self.SUPPORTED_IMAGE_TYPES):
@@ -118,9 +122,13 @@ class ImageDiffHeatMapperMk2:
 
     def type_check_model_files(self) -> Never: 
         if self.model_file1 is None or self.model_file2 is None:
-            raise ValueError("Both model_file1 and model_file2 must be provided.")
+            msg = f"self.model_file1: {self.model_file1}\nself.model_file2: {self.model_file2}"
+            logger.error(msg)
+            raise ValueError(f"Both model_file1 and model_file2 must be provided.\n{msg}")
         if not os.path.exists(self.model_file1) or not os.path.exists(self.model_file2):
-            raise FileNotFoundError("One or both model files not found under the given paths.")
+            msg = f"self.model_file1: {self.model_file1}\nself.model_file2: {self.model_file2}"
+            logger.error(msg)
+            raise FileNotFoundError(f"One or both model files not found under the given paths.\n{msg}")
         
         # Check if the models have the same ending prefix e.g. gguf, pth, etc.
         if not _have_the_same_file_extension(self.model_file1, self.model_file2):
@@ -374,7 +382,7 @@ class ImageDiffHeatMapperMk2:
         return heatmap_image
 
 
-    def image_diff_heatmapper_mk2(self) -> None:
+    def tensor_comparison_to_image(self) -> None:
 
         # Log basic stats for both tensors
         for i in [1, 2]:
@@ -474,7 +482,7 @@ def parse_arguments():
     parser = create_parser()
 
     if len(sys.argv) != 7:
-        logger.error("Usage: python image_diff_heatmapper_mk2.py <model_file1> <model_file2> <tensor_name> --comparison_type=<comparison_type> --color_mode=<color_mode> --output_path=<output_path>")
+        logger.error("Usage: python tensor_comparison_to_image.py <model_file1> <model_file2> <tensor_name> --comparison_type=<comparison_type> --color_mode=<color_mode> --output_path=<output_path>")
         sys.exit(1)
 
     return parser.parse_args()
@@ -482,8 +490,8 @@ def parse_arguments():
 
 def main() -> None:
 
-    logger.info("* Starting image_diff_heatmapper_mk2 program...")
-    ImageDiffHeatMapperMk2(parse_arguments()).image_diff_heatmapper_mk2()
+    logger.info("* Starting tensor_comparison_to_image program...")
+    TensorComparisonToImage(parse_arguments()).tensor_comparison_to_image()
     logger.info("*\nDone.")
 
 

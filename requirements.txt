@@ -8,7 +8,7 @@ pandas
 # pymysql
 pyyaml
 gguf>=0.5
-numpy>=1.26
+numpy==1.26
 pillow
 matplotlib
 rasterio

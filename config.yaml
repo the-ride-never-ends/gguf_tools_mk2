@@ -6,8 +6,8 @@ SYSTEM:
 FILENAMES:
   INPUT_FILENAME: "input"
   # Tensor to image converter for LLM models (GGUF and PyTorch)
-GGUF_TENSOR_TO_IMAGE:
-  MODEL: \llama-2-7b.Q8_0\llama-2-7b.Q8_0.gguf # model filename, can be GGUF or PyTorch (if PyTorch support available)
+TENSOR_TO_IMAGE:
+  MODEL: llama-2-7b.Q8_0\llama-2-7b.Q8_0.gguf # model filename, can be GGUF or PyTorch (if PyTorch support available)
   MODEL_TYPE: gguf
   TENSOR: blk.2.ffn_down.weight # Tensor name, may be specified multiple times UNLESS --match-glob or --match-regex is used
   COLOR_RAMP_TYPE: continuous # Color ramp type, Can be discrete or continuous
@@ -23,22 +23,22 @@ GGUF_TENSOR_TO_IMAGE:
   #     Output modes (see below). Default: devs-overall
   #     NOTE: If the program is started using start.bat
   #     the options "mean-devs-overall", "mean-devs-rows", "mean-devs-cols" are available as aliases for
-  #     "devs-overall", "devs-rows", "devs-cols", as well as "median-devs-overall", "median-devs-rows", "median-devs-cols"
+  #     "devs-overall", "devs-rows", "devs-cols", as well as "median-devs-overall", "median-devs-rows", "median-devs-cols", "values-as-is""
   #     overall: Calculate the mean and standard deviation over the entire tensor.
   #     rows   : Same as above, except the calculation is based on rows.
   #     cols   : Same as above, except the calculation is based on columns.
   #     """,
   # )
   # Produces heatmaps of differences in tensor values for LLM models (GGUF and PyTorch)
-IMAGE_DIFF_HEATMAPPER_MK2:
+TENSOR_COMPARISON_TO_IMAGE:
   # Information on output modes:
   #   devs-*:
   #     overall: Calculates differences in tensor values between two models with the same foundation architecture.
   #             By default, output will be a grayscale raster that has the same dimensions as the tensors.
   #     rows   : Same as above, except the calculation is based on rows.
   #     cols   : Same as above, except the calculation is based on columns.
-  MODEL_FILE_PATH1: \llama-2-7b.Q8_0\llama-2-7b.Q8_0.gguf # Filename for the first model, can be GGUF or PyTorch (if PyTorch support available)"
-  MODEL_FILE_PATH2: \llama-2-7b-chat.Q8_0\llama-2-7b-chat.Q8_0.gguf # Filename for the second model, can be GGUF or PyTorch (if PyTorch support available)"
+  MODEL_FILE_PATH1: llama-2-7b.Q8_0\llama-2-7b.Q8_0.gguf # Filename for the first model, can be GGUF or PyTorch (if PyTorch support available)"
+  MODEL_FILE_PATH2: llama-2-7b-chat.Q8_0\llama-2-7b-chat.Q8_0.gguf # Filename for the second model, can be GGUF or PyTorch (if PyTorch support available)"
   TENSOR_NAME: blk.2.ffn_down.weight # Tensor name, must be from models with the same foundation architecture for the differences to be valid.
   COMPARISON_TYPE: mean # "Comparison types, Default: mean, Choices: ['mean', 'median', 'absolute']"
   COLOR_MODE: grayscale # Color mode, Default: grayscale, Choices: ['grayscale', 'false color jet', 'false color vidiris', 'binned coolwarm']

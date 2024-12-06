@@ -56,9 +56,11 @@ import yaml
 from .utils.logger.delete_logs_if_they_get_too_big_on_disk import (
     delete_logs_if_they_get_too_big_on_disk
 )
+from .utils.logger.move_logs_folders_into_this_folder_if_there_are_too_many_of_them import (
+    move_logs_folders_into_this_folder_if_there_are_too_many_of_them
+)
 from .utils.logger.delete_empty_folders_in import delete_empty_folders_in
 from .utils.logger.delete_empty_files_in import delete_empty_files_in
-
 
 def make_id():
     return str(uuid.uuid4())
@@ -69,6 +71,8 @@ script_dir = os.path.dirname(os.path.realpath(__file__))
 PROJECT_ROOT = os.path.dirname(script_dir)
 PROGRAM_NAME = os.path.basename(PROJECT_ROOT)
 debug_log_folder = os.path.join(PROJECT_ROOT, "debug_logs")
+overflow_debug_folder = os.path.join(debug_log_folder, "overflow_debug_logs")
+
 
 # Clean up debug folders.
 delete_empty_files_in(debug_log_folder, with_ending=".log")
@@ -76,6 +80,8 @@ delete_empty_files_in(script_dir, with_ending='.Identifier')
 max_size_in_megabytes = 200
 delete_logs_if_they_get_too_big_on_disk(debug_log_folder, max_size_in_megabytes)
 delete_empty_folders_in(debug_log_folder)
+move_logs_folders_into_this_folder_if_there_are_too_many_of_them(overflow_debug_folder, debug_log_folder, too_many=25)
+
 
 # Create a folder for current instantiation of the class.
 # This should be created a-new every time the program is run or tested.
@@ -210,7 +216,7 @@ class Logger:
             case logger_name if logger_name == PROGRAM_NAME: # If logger_name is the program's name
                 self.logger = logging.getLogger(f"{PROGRAM_NAME}_logger")
                 filename = f"{PROGRAM_NAME}_debug_log_{self.current_time}.log"
-                formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(filename)s: %(lineno)d - %(message)s')
+                formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(filename)s: %(lineno)d - %(message)s')
                 self.stacklevel = self.stacklevel or 2 # We make stacklevel=2 as otherwise it'll give the filename and line numbers from the logger class itself.
 
             case "prompt":
@@ -222,7 +228,7 @@ class Logger:
             case _: # All other specialized loggers.
                 self.logger = logging.getLogger(f"{self.logger_name}_logger")
                 filename = f"{self.logger_name}_debug_log_{self.current_time}.log"
-                formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(filename)s: %(lineno)d - %(message)s')
+                formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(filename)s: %(lineno)d - %(message)s')
                 self.stacklevel = self.stacklevel or 2
 
         # Create the logger itself.
@@ -306,6 +312,7 @@ class Logger:
         NOTE q is deprecated due to Python's inability to tell the difference between a regular and formatted string at runtime.
         """
         if not off:
+
             if not f: # We move up the stack by 1 because it's a nested method.
                 method(message, stacklevel=self.stacklevel+1)
             else:
@@ -372,4 +379,3 @@ class Logger:
         NOTE q is deprecated due to Python's inability to tell the difference between a regular and formatted string at runtime.
         """
         self._message_template(message, self.logger.exception, f, q, t, off)
-

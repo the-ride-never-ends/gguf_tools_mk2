@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import os
 import re
 import subprocess
 import sys
@@ -13,13 +14,17 @@ from pathlib import Path
 from textwrap import dedent
 from typing import Any, Callable, Iterable, Protocol
 
+
 import numpy as np
 import numpy.typing as npt
+
+
+from .utils.write_array_to_geotiff import write_array_to_geotiff
 
 from logger.logger import Logger
 logger = Logger(logger_name=__name__)
 
-from config.config import OUTPUT_FOLDER
+from config.config import OUTPUT_FOLDER, INPUT_FOLDER
 from config.file_specific_configs import FileSpecificConfigs
 config: Callable = FileSpecificConfigs().config
 
@@ -132,7 +137,7 @@ def gguf_tensor_to_image_comfy_ui_node(
         dict: A dictionary containing the UI information with the generated heatmap image.
     """
     
-    run = GgufTensorToImage(adjust_1d_rows=adjust_1d_rows,
+    run = TensorToImage(adjust_1d_rows=adjust_1d_rows,
                             mode=mode,
                             model=model,
                             model_type=model_type,
@@ -142,20 +147,26 @@ def gguf_tensor_to_image_comfy_ui_node(
                             output=output,
                             scale=scale,
                             show_with=show_with)
-    run.gguf_tensor_to_image()
+    run.tensor_to_image()
 
     return {"ui": {"images": [run.heatmap_image]}} 
 
 
-class GgufTensorToImage:
+["mean", "median", "absolute"],
+
+class TensorToImage:
 
     def __init__(self, **kwargs) -> None:
         # NOTE YAML constants always take precedent over interactive arguments.
         self.adjust_1d_rows: int = ADJUST_1D_ROWS or kwargs.pop("adjust_1d_rows",  32)
         self.mode: str = MODE or kwargs.pop("mode", "mean-devs-overall")
+
         self.model: str = MODEL or kwargs.pop("model")
         if self.model is None:
             raise ValueError("No model specified in MakeImage class parameters")
+        self.model_path: str = os.path.join(INPUT_FOLDER, self.model.lstrip("/\\"))
+        if not os.path.exists(self.model_path):
+            raise FileNotFoundError(f"Model file not found: {self.model_path}")
 
         self.model_type: str = MODEL_TYPE or kwargs.pop("model_type")
         self.match_glob: bool = MATCH_GLOB or kwargs.pop("match_glob", True)
@@ -172,7 +183,7 @@ class GgufTensorToImage:
         self.heatmap_image = None
 
 
-        # Cast the model as the appropriate type.
+        # Change self.model from the model's file path to an instance of it.
         self.model: Model
         if self.model_type == "gguf" or self.model.lower().endswith(".gguf"):
             self.model = GGUFModel(self.model)
@@ -298,7 +309,11 @@ class GgufTensorToImage:
         return central_tendency, deviation
 
 
-    def make_image_of_(self, tensor: npt.NDArray[np.float32]) -> Image:
+    def make_image_of_(self, 
+                       tensor: npt.NDArray[np.float32],
+                       central_tendency: float,
+                       deviation: float,
+                       ) -> Image:
         """
         Create an image representation of a given tensor.
 
@@ -333,11 +348,6 @@ class GgufTensorToImage:
         Note:
         - The color mapping logic is sensitive to the statistical properties of the input tensor.
         """
-
-        self.reshape_1d_tensor_into_2d_if_desired(tensor)
-
-        central_tendency, deviation = self.return_central_tendency_and_deviation_metrics(tensor)
-
         # Map the 2D tensor data to the same range as an image 0-255.
         sdp_max = central_tendency + CFG_SD_CLIP_THRESHOLD * deviation
             # Set the positive and negative SD thresholds for this specific tensor.
@@ -446,7 +456,7 @@ class GgufTensorToImage:
         return
 
 
-    def gguf_tensor_to_image(self) -> None:
+    def tensor_to_image(self) -> None:
         """
         Process and convert transformer tensors to images.
 
@@ -480,11 +490,18 @@ class GgufTensorToImage:
             if not self.match_1d and len(tensor.shape) == 1:
                 continue
 
+            self.reshape_1d_tensor_into_2d_if_desired(tensor)
+
+            if self.mode == "values-as-is":
+                return write_array_to_geotiff(tensor)
+
+            central_tendency, deviation = self.return_central_tendency_and_deviation_metrics(tensor)
+
             self.set_output_path_for_this_image_of_(tk)
 
             logger.info(f"Processing tensor {tk!r} (type:{self.model.get_type_name(tk)}, shape:{tensor.shape})",)
 
-            self.heatmap_image = img = self.make_image_of_(tensor)
+            self.heatmap_image = img = self.make_image_of_(tensor, central_tendency, deviation)
 
             if self.scale != 1.0: # Scale the image so that it fits on the screen (?)
                 self.heatmap_image = img = img.resize(
@@ -643,9 +660,9 @@ def parse_arguments() -> dict:
 
 
 def main() -> None:
-    logger.info("* Starting gguf_tensor_to_image program...")
+    logger.info("* Starting tensor_to_image program...")
 
-    GgufTensorToImage(parse_arguments()).gguf_tensor_to_image()
+    TensorToImage(parse_arguments()).tensor_to_image()
 
     logger.info("\n* Done.")
 

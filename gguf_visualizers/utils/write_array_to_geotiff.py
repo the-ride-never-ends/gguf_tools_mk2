@@ -58,7 +58,7 @@ def write_array_to_geotiff(
         crs=crs,
         transform=transform,
     ) as dataset:
-        # Write the array to the file
+        # Write the array to the file bands
         if bands == 1:
             dataset.write(array, 1)
         else:
