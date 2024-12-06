@@ -46,8 +46,11 @@ except ImportError:
 try:
     from gguf.constants import GGMLQuantizationType
     from gguf.gguf_reader import GGUFReader, ReaderTensor
-except ImportError:
-    pass
+except ImportError as e:
+    logger.error(f"Could not load GGMLQuantizationType, GGUFReader, ReaderTensor: {e}")
+    raise e
+
+
 
 #### HARD CODED CONSTANTS ###
 # Clip values to at max 7 standard deviations from the mean.
@@ -70,159 +73,10 @@ CFG_MID_SCALE = (0.1, 0.1, 0.1)
 # CFG_MID_SCALE = (0.6, 0.6, 0.9) Original Values
 
 
-class Quantized:
-    def __init__(self, dtype: np.dtype[Any], block_size: int) -> None:
-        self.dtype = dtype
-        self.block_size = block_size
-
-    def quantize(self, arr: npt.NDArray[np.float32]) -> npt.NDArray[np.uint8]:
-        raise NotImplementedError("Ohno")
-
-    def dequantize(self, arr: npt.NDArray[np.uint8]) -> npt.NDArray[np.float32]:
-        raise NotImplementedError("Ohno")
-
-
-class Quantized_Q8_0(Quantized):  # noqa: N801
-    block_size = 32
-    dtype = np.dtype([("d", "f2"), ("qs", "i1", (block_size,))])
-
-    # Mini Q8_0 quantization in Python!
-    @classmethod
-    def quantize(cls, arr: npt.NDArray[np.float32]) -> npt.NDArray[np.uint8]:
-        n_blocks = arr.size // cls.block_size
-        blocks = arr.reshape((n_blocks, cls.block_size))
-
-        # Much faster implementation of block quantization contributed by @Cebtenzzre
-        def quantize_blocks(blocks: npt.NDArray[Any]) -> Iterable[tuple[Any, Any]]:
-            d = abs(blocks).max(axis=1) / np.float32(127)
-
-            with np.errstate(divide="ignore"):
-                qs = (blocks / d[:, None]).round()
-
-            qs[d == 0] = 0
-            yield from zip(d, qs)
-
-        return np.fromiter(
-            quantize_blocks(blocks),
-            count=n_blocks,
-            dtype=cls.dtype,
-        )
-
-    @classmethod
-    def dequantize(
-        cls,
-        arr: npt.NDArray[np.uint8],
-    ) -> npt.NDArray[np.float32]:
-        blocks = arr.view(dtype=cls.dtype)
-        return (blocks["d"][:, None] * np.float32(blocks["qs"])).flatten()
-
-
-class Model(Protocol):
-    def __init__(self, filename: Path | str) -> None:
-        pass
-
-    def tensor_names(self) -> Iterable[str]:
-        pass
-
-    def valid(self, key: str) -> tuple[bool, None | str]:
-        pass
-
-    def get_as_f32(self, key: str) -> npt.NDArray[np.float32]:
-        pass
-
-    def get_type_name(self, key: str) -> str:
-        pass
-
-
-class GGUFModel(Model):
-    def __init__(self, filename: Path | str) -> None:
-        try:
-            import gguf
-        except ImportError:
-            logger.error(
-                "! Loading GGUF models requires the gguf Python model",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        logger.info(f"* Loading GGUF model: {filename}")
-        self.gguf = gguf
-        self.reader = gguf.GGUFReader(filename, "r")
-        self.tensors: OrderedDict[str, ReaderTensor] = OrderedDict(
-            (tensor.name, tensor) for tensor in self.reader.tensors
-        )
-
-    def tensor_names(self) -> Iterable[str]:
-        return self.tensors.keys()
-
-    def valid(self, key: str) -> tuple[bool, None | str]:
-        tensor = self.tensors.get(key)
-        if tensor is None:
-            return (False, "Tensor not found")
-        if tensor.tensor_type not in (
-            self.gguf.GGMLQuantizationType.F16,
-            self.gguf.GGMLQuantizationType.F32,
-            self.gguf.GGMLQuantizationType.Q8_0,
-        ):
-            return (False, "Unhandled type")
-        if len(tensor.shape) > 2:
-            return (False, "Unhandled dimensions")
-        return (True, "OK")
-
-    def get_as_f32(self, key: str) -> npt.NDArray[np.float32]:
-        tensor = self.tensors[key]
-        if tensor.tensor_type == self.gguf.GGMLQuantizationType.F16:
-            return tensor.data.view(dtype=np.float32)
-        if tensor.tensor_type == self.gguf.GGMLQuantizationType.F32:
-            return tensor.data
-        if tensor.tensor_type == self.gguf.GGMLQuantizationType.Q8_0:
-            return Quantized_Q8_0.dequantize(tensor.data).reshape(tensor.shape)
-        raise ValueError("Unhandled tensor type")
-
-    def get_type_name(self, key: str) -> str:
-        return self.tensors[key].tensor_type.name
-
-
-class TorchModel(Model):
-    def __init__(self, filename: Path | str) -> None:
-        try:
-            import torch
-        except ImportError:
-            logger.error(
-                "! Loading PyTorch models requires the Torch Python model",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-
-        logger.info(f"* Loading PyTorch model: {filename}")
-        self.torch = torch
-        self.model = torch.load(filename, map_location="cpu", mmap=True)
-        self.tensors: OrderedDict[str, None] = OrderedDict(
-            (tensor_name, tensor.squeeze())
-            for tensor_name, tensor in self.model.items()
-        )
-
-    def tensor_names(self) -> Iterable[str]:
-        return self.tensors.keys()
-
-    def valid(self, key: str) -> tuple[bool, None | str]:
-        tensor = self.tensors.get(key)
-        if tensor is None:
-            return (False, "Tensor not found")
-        if tensor.dtype not in (
-            self.torch.float32,
-            self.torch.float16,
-            self.torch.bfloat16,
-        ):
-            return (False, "Unhandled type")
-        if len(tensor.shape) > 2:
-            return (False, "Unhandled dimensions")
-        return (True, "OK")
-
-    def get_as_f32(self, key: str) -> npt.NDArray[np.float32]:
-        return self.tensors[key].to(dtype=self.torch.float32).numpy()
-
-    def get_type_name(self, key: str) -> str:
-        return str(self.tensors[key].dtype)
+from .model_classes.quantized_class import Quantized_Q8_0
+from .model_classes.model_abstract_class import Model
+from .model_classes.gguf_model import GGUFModel
+from .model_classes.torch_model import TorchModel
 
 
 def calculate_mad_and_median(tensor: npt.NDArray[np.float32], axis: int = None) -> tuple[float,float]:
@@ -656,6 +510,7 @@ class GgufTensorToImage:
                         fp.flush()
                         subprocess.call((self.show_with, fp.name))  # noqa: S603
 
+
 def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Tensor to image converter for LLM models (GGUF and PyTorch)",
@@ -764,7 +619,7 @@ def create_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def parse_arguments():
+def parse_arguments() -> dict:
     parser = create_parser()
     args = parser.parse_args(None if len(sys.argv) > 1 else ["--help"])
     if not (args.show_with or args.output):
@@ -776,7 +631,15 @@ def parse_arguments():
             "! Can only specify one tensor name (pattern) when using --match-glob or --match-regex",
             file=sys.stderr,
         )
-    return args
+    
+    # Convert the namespace to a dictionary
+    kwargs = vars(args)
+
+    logger.debug("Arguments as kwargs dictionary:")
+    for key, value in kwargs.items():
+        logger.debug(f"{key}: {value}")
+
+    return kwargs
 
 
 def main() -> None:

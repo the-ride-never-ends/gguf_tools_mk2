@@ -24,11 +24,8 @@ call venv\Scripts\activate.bat
 
 REM Install required packages from requirements.txt
 if exist requirements.txt (
-    REM Check if the error is environment-specific
-    python3.11 -m pip install -r requirements.txt
-
     echo Installing required packages...
-    REM pip install -r requirements.txt
+    pip install -r requirements.txt
 ) else (
     echo requirements.txt not found. Skipping package installation.
 )

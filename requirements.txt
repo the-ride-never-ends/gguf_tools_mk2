@@ -1,10 +1,11 @@
 pytest
 pytest-asyncio
-aiomysql
+# aiomysql
+sentencepiece
 multipledispatch
-mysql-connector-python
+# mysql-connector-python
 pandas
-pymysql
+# pymysql
 pyyaml
 gguf>=0.5
 numpy>=1.26

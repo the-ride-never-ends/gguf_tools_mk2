@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
 import os
-import re
 import sys
 from textwrap import dedent
-from typing import Callable
+from typing import Callable, Never
 
 
 import matplotlib.pyplot as plt
@@ -19,6 +17,14 @@ from PIL import Image
 
 
 from gguf_visualizers.gguf_tensor_to_image import GGUFModel, TorchModel, Model
+from .utils._have_the_same_file_extension import _have_the_same_file_extension
+from .utils._check_if_array_was_normalized_correctly import _check_if_array_was_normalized_correctly
+from .utils._right_now import _right_now
+from .utils.find_this_file_under_this_directory_and_return_the_files_path import (
+    find_this_file_under_this_directory_and_return_the_files_path
+)
+
+from .utils.write_array_to_geotiff import write_array_to_geotiff
 
 
 from config.config import OUTPUT_FOLDER
@@ -28,124 +34,12 @@ logger = Logger(logger_name=__name__)
 from config.file_specific_configs import FileSpecificConfigs
 config: Callable = FileSpecificConfigs().config
 
-MODEL_FILE1: str = config("MODEL_FILE1")
-MODEL_FILE2: str = config("MODEL_FILE2")
+MODEL_FILE_PATH1: str = config("MODEL_FILE_PATH1")
+MODEL_FILE_PATH2: str = config("MODEL_FILE_PATH2")
 TENSOR_NAME: str = config("TENSOR_NAME")
 COMPARISON_TYPE: str = config("COMPARISON_TYPE")
 COLOR_MODE: str = config("COLOR_MODE")
 OUTPUT_NAME: str = config("OUTPUT_NAME")
-
-
-
-def _right_now() -> str:
-    return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-
-
-def _have_then_same_file_extension(*file_names: str | argparse.Namespace) -> bool:
-    """
-    Check if all given file names have the same file extension.
-
-    This function compares the file extensions of all provided file names.
-    It supports both string file names and argparse.Namespace objects.
-
-    Args:
-        *file_names (str | argparse.Namespace): Variable number of file names or argparse.Namespace objects.
-
-    Returns:
-        bool: True if all file names have the same extension, False otherwise.
-
-    Raises:
-        ValueError: If fewer than two file names are provided.
-
-    Example:
-        >>> _have_then_same_file_extension('file1.txt', 'file2.txt', 'file3.txt')
-        True
-        >>> _have_then_same_file_extension('file1.txt', 'file2.jpg', 'file3.txt')
-        False
-    """
-    if len(file_names) < 2:
-        raise ValueError("At least two files are required for comparison.")
-
-    # Convert all inputs to strings
-    file_str_list = [str(file) for file in file_names]
-
-    # Regex pattern to extract file extension
-    pattern: str = r'\.([^.]+)$'
-
-    # Extracting extensions
-    extensions_list = [re.search(pattern, file_str) for file_str in file_str_list]
-
-    # Check if all extensions are found
-    if not all(extensions_list):
-        return False
-
-    # Extract the actual extension strings
-    ext_strs_list = [ext.group(1) for ext in extensions_list if ext]
-
-    # Compare all extensions to the first one
-    return all(ext == ext_strs_list[0] for ext in ext_strs_list)
-
-
-def _norm_array_check(
-        diff_array: npt.NDArray[np.float32], 
-        tensor1: npt.NDArray[np.float32], 
-        tensor2: npt.NDArray[np.float32]
-        ) -> npt.NDArray[np.float32]:
-    # Define scale factor
-    scale_factor = 100.0
-
-    # Get min and max values of the tensor
-    min_val, max_val = diff_array.min(), diff_array.max()
-    logger.info(f"* Min/Max Values in diff_array: max = {max_val}, min = {min_val}")
-
-    if min_val == max_val:
-        logger.warning("* Uniform array detected, increasing precision from float32 to float64.")
-
-        # Calculate numerically stable means and standard deviations.
-        mean1, std_dev1 = np.mean(tensor1, dtype=np.float64), np.std(tensor1, dtype=np.float64)
-        mean2, std_dev2 = np.mean(tensor2, dtype=np.float64), np.std(tensor2, dtype=np.float64)
-
-        # Normalize arrays
-        normalized1 = (tensor1 - mean1) / std_dev1
-        normalized2 = (tensor2 - mean2) / std_dev2
-
-        # Calculate the difference between normalized arrays
-        diff_array = normalized1 - normalized2
-
-        # Check that the difference array is normalized correctly.
-        min_val, max_val = diff_array.min(), diff_array.max()
-
-        # If array value is not normalized correctly by increasing precision, try to scale it as well.
-        if min_val == max_val:
-            logger.warning(f"* Uniform array still detected, max = {max_val}, min = {min_val}")
-            logger.warning(f"* Increasing precision failed to normalize arrays. Increasing precision and scaling by {scale_factor}.")
-
-            # Calculate numerically stable means and standard deviations from the scaled tensors
-            mean1, std_dev1 = np.mean(tensor1 * scale_factor, dtype=np.float64), np.std(tensor1 * scale_factor, dtype=np.float64)
-            mean2, std_dev2 = np.mean(tensor2 * scale_factor, dtype=np.float64), np.std(tensor2 * scale_factor, dtype=np.float64)
-
-            # Normalize scaled arrays
-            normalized1 = (tensor1 - mean1) / std_dev1
-            normalized2 = (tensor2 - mean2) / std_dev2
-
-            # Calculate the difference between normalized arrays
-            diff_array = normalized1 - normalized2
-
-            # Check that the scaled difference array is normalized correctly.
-            min_val, max_val = diff_array.min(), diff_array.max()
-
-            if min_val == max_val:
-                logger.warning(f"* Uniform array still detected, max = {max_val}, min = {min_val}")
-                raise ValueError(f"Array could not be normalized by precision increase and scaling by {scale_factor}.")
-            else:
-                logger.info("* Array normalization successful by precision increase and scaling.")
-                return diff_array
-        else:
-            logger.info("* Array normalization successful by precision increase.")
-            return diff_array
-    else:
-        logger.info("* Array normalization successful.")
-        return diff_array
 
 
 def comfyui_node():
@@ -180,45 +74,31 @@ def image_diff_heatmapper_mk2_comfy_ui_node(
         return {"ui": {"images": [run.heatmap_image]}}
 
 
+
+
 class ImageDiffHeatMapperMk2:
 
     SUPPORTED_IMAGE_TYPES = ('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff')
 
-    _path = "IMAGE_DIFF_HEATMAPPER_MK2_ARGS"
-    MODEL_FILE1 = config(_path, "MODEL_FILE1")
-    MODEL_FILE2 = config(_path, "MODEL_FILE2")
-    TENSOR_NAME = config(_path, "TENSOR_NAME")
-    COMPARISON_TYPE = config(_path, "COMPARISON_TYPE")
-    COLOR_MODE = config(_path, "COLOR_MODE")
-    OUTPUT_NAME = config(_path, "OUTPUT_NAME")
-
-
     def __init__(self, **kwargs):
 
-        self.model_file1: str = kwargs["model_file1"] or self.MODEL_FILE1
-        self.model_file2: str = kwargs["model_file2"] or self.MODEL_FILE2
+        self.model_file1: str = MODEL_FILE_PATH1 or kwargs.pop("model_file1")
+        self.model_file2: str = MODEL_FILE_PATH2 or kwargs.pop("model_file2")
+        self.type_check_model_files()
 
-        if self.model_file1 is None or self.model_file2 is None:
-            raise ValueError("Both model_file1 and model_file2 must be provided.")
-        if not os.path.exists(self.model_file1) or not os.path.exists(self.model_file2):
-            raise FileNotFoundError("One or both model files not found under the given paths.")
-        
-        # Check if the models have the same ending prefix e.g. gguf, pth, etc.
-        if not _have_then_same_file_extension(self.model_file1, self.model_file2):
-            raise ValueError(f"Model prefixes do not match\n{os.path.basename(self.model_file1)}\n{os.path.basename(self.model_file2)}")
-
-        self.tensor_name: str =  kwargs.pop("tensor_name") or self.TENSOR_NAME or "blk.2.ffn_down.weight"
+        self.tensor_name: str = TENSOR_NAME or kwargs.pop("tensor_name")
         if self.tensor_name is None or self.tensor_name == "":
             raise ValueError("Tensor name cannot be empty.")
 
-        self.comparison_type: str =  kwargs.pop("comparison_type") or self.COMPARISON_TYPE or "mean"
-        self.color_mode: str =  kwargs.pop("color_mode") or self.COLOR_MODE or "grayscale"
+        self.comparison_type: str = COMPARISON_TYPE or kwargs.pop("comparison_type")
+        self.color_mode: str = COLOR_MODE or kwargs.pop("color_mode")
 
-        self.output_name = self.OUTPUT_NAME or kwargs.pop(
+        self.output_name = OUTPUT_NAME or kwargs.pop(
             "output_name", 
             f"diff_heatmap_{os.path.basename(self.model_file1)}_and_{os.path.basename(self.model_file1)}_{_right_now()}.png"
         )
-        self.output_name: str = os.path.join(OUTPUT_FOLDER, self.output_name)
+        self.output_path: str = find_this_file_under_this_directory_and_return_the_files_path(OUTPUT_FOLDER, self.output_name)
+
         # If the image path does not end with a file-type, default to png
         if not self.output_path.lower().endswith(self.SUPPORTED_IMAGE_TYPES):
             self.output_path = f"{self.output_path}.png"
@@ -235,6 +115,16 @@ class ImageDiffHeatMapperMk2:
             raise ValueError("Tensors must be of the same dimensions.")
 
         self.heatmap_image: Image = None
+
+    def type_check_model_files(self) -> Never: 
+        if self.model_file1 is None or self.model_file2 is None:
+            raise ValueError("Both model_file1 and model_file2 must be provided.")
+        if not os.path.exists(self.model_file1) or not os.path.exists(self.model_file2):
+            raise FileNotFoundError("One or both model files not found under the given paths.")
+        
+        # Check if the models have the same ending prefix e.g. gguf, pth, etc.
+        if not _have_the_same_file_extension(self.model_file1, self.model_file2):
+            raise ValueError(f"Model prefixes do not match\n{os.path.basename(self.model_file1)}\n{os.path.basename(self.model_file2)}")
 
 
     def _extract_tensor_from_model(
@@ -341,7 +231,7 @@ class ImageDiffHeatMapperMk2:
 
         Notes:
             - Normalization is performed as: (tensor - mean) / standard_deviation
-            - It uses the _norm_array_check function to ensure proper normalization of the difference array.
+            - It uses the _check_if_array_was_normalized_correctly function to ensure proper normalization of the difference array.
         """
         # Check is tensors are the same dimensions.
         if self.tensor1.shape != self.tensor2.shape:
@@ -364,8 +254,7 @@ class ImageDiffHeatMapperMk2:
         # Calculate the difference between normalized arrays.
         mean_diff_array = tensor_list[0] - tensor_list[1]
 
-        # Check if the array was normalized correctly.
-        mean_diff_array = _norm_array_check(mean_diff_array, self.tensor1, self.tensor1)
+        mean_diff_array = _check_if_array_was_normalized_correctly(mean_diff_array, self.tensor1, self.tensor1)
 
         return mean_diff_array
 
@@ -511,9 +400,13 @@ class ImageDiffHeatMapperMk2:
                 logger.warning("Unknown comparison type. Defaulting to mean-based comparison...")
                 difference_comparison_result = self._compare_normalized_tensor_means()
 
-        self.heatmap_image: Image = self._covert_comparison_result_to_a_heatmap_image(
-                                            self.color_mode, 
-                                            difference_comparison_result)
+        if self.output_name.endswith((".geotiff", ".tiff", ".tif",)):
+            logger.info("Saving difference_comparison_result as a geotiff file...")
+            write_array_to_geotiff(difference_comparison_result)
+        else:
+            self.heatmap_image: Image = self._covert_comparison_result_to_a_heatmap_image(
+                                                self.color_mode, 
+                                                difference_comparison_result)
 
         if self.heatmap_image is not None:
             try:
@@ -583,7 +476,7 @@ def parse_arguments():
     if len(sys.argv) != 7:
         logger.error("Usage: python image_diff_heatmapper_mk2.py <model_file1> <model_file2> <tensor_name> --comparison_type=<comparison_type> --color_mode=<color_mode> --output_path=<output_path>")
         sys.exit(1)
-    
+
     return parser.parse_args()
 
 

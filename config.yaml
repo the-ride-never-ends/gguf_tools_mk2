@@ -1,22 +1,25 @@
 SYSTEM:
   SKIP_STEPS: False
-  FILENAME_PREFIX: "gguf_tools_mk2"
+  FILENAME_PREFIX: gguf_tools_mk2
+  DEFAULT_LOG_LEVEL: DEBUG
+  FORCE_DEFAULT_LOG_LEVEL_FOR_WHOLE_PROGRAM: True
 FILENAMES:
-  INPUT_FILENAME: ""
-GGUF_TENSOR_TO_IMAGE: # Tensor to image converter for LLM models (GGUF and PyTorch)
-  MODEL: "llama-2-7b.Q8_0.gguf" # model filename, can be GGUF or PyTorch (if PyTorch support available)
-  MODEL_TYPE: "gguf"
-  TENSOR: "blk.2.ffn_down.weight" # Tensor name, may be specified multiple times UNLESS --match-glob or --match-regex is used
-  COLOR_RAMP_TYPE: "continuous" # Color ramp type, Can be discrete or continuous
-  OUTPUT: "" # Output file, will be prefixed with the tensor name if multiple tensor names are specified
-  SHOW_WITH: "auto" # Show the result with the specified application. WARNING: If processing multiple tensors and your image application does not block then you will end up with a bunch of huge images displayed at the same time
+  INPUT_FILENAME: "input"
+  # Tensor to image converter for LLM models (GGUF and PyTorch)
+GGUF_TENSOR_TO_IMAGE:
+  MODEL: \llama-2-7b.Q8_0\llama-2-7b.Q8_0.gguf # model filename, can be GGUF or PyTorch (if PyTorch support available)
+  MODEL_TYPE: gguf
+  TENSOR: blk.2.ffn_down.weight # Tensor name, may be specified multiple times UNLESS --match-glob or --match-regex is used
+  COLOR_RAMP_TYPE: continuous # Color ramp type, Can be discrete or continuous
+  OUTPUT: llama-2-7b.Q8_0.gguf.blk.2.ffn_down.weight.geotiff # Output file, will be prefixed with the tensor name if multiple tensor names are specified
+  SHOW_WITH: auto # Show the result with the specified application. WARNING: If processing multiple tensors and your image application does not block then you will end up with a bunch of huge images displayed at the same time
   MATCH_GLOB: True # Interpret tensor name as a glob, so wildcards like blk.0.* will work
   MATCH_REGEX: True # Interpret tensor name as a regex, so regular expressions like ^blk\\.[012]\\.attn will work
   MATCH_1D: True # When using a wildcard, also match 1 dimensional tensors
   ADJUST_1D_ROWS: 32 # Instead of rendering 1D tensors as a wide image with one row, rearrange into multiple rows. For example, if we have a 1D tensor 3,200 elements and specify "--adjust-1d-rows 32", the output image will have dimensions 100x32. Note The tensor size must be divisible by the specified value.
   SCALE: 1.0 # Scale the image. Default: 1.0 (no scaling)
   FORCE: True # "Force overwriting the output file if it already exists"
-  MODE: "mean-devs-overall"
+  MODE: mean-devs-overall
   #     Output modes (see below). Default: devs-overall
   #     NOTE: If the program is started using start.bat
   #     the options "mean-devs-overall", "mean-devs-rows", "mean-devs-cols" are available as aliases for
@@ -26,20 +29,21 @@ GGUF_TENSOR_TO_IMAGE: # Tensor to image converter for LLM models (GGUF and PyTor
   #     cols   : Same as above, except the calculation is based on columns.
   #     """,
   # )
-IMAGE_DIFF_HEATMAPPER_MK2: # Produces heatmaps of differences in tensor values for LLM models (GGUF and PyTorch)
+  # Produces heatmaps of differences in tensor values for LLM models (GGUF and PyTorch)
+IMAGE_DIFF_HEATMAPPER_MK2:
   # Information on output modes:
   #   devs-*:
   #     overall: Calculates differences in tensor values between two models with the same foundation architecture.
   #             By default, output will be a grayscale raster that has the same dimensions as the tensors.
   #     rows   : Same as above, except the calculation is based on rows.
   #     cols   : Same as above, except the calculation is based on columns.
-  MODEL_FILE1: "{{ model_file1 }}" # Filename for the first model, can be GGUF or PyTorch (if PyTorch support available)"
-  MODEL_FILE2: "{{ model_file2 }}" # Filename for the second model, can be GGUF or PyTorch (if PyTorch support available)"
-  TENSOR_NAME: "{{ tensor_name }}" # Tensor name, must be from models with the same foundation architecture for the differences to be valid.
-  COMPARISON_TYPE: "mean" # "Comparison types, Default: mean, Choices: ['mean', 'median', 'absolute']"
-  COLOR_MODE: "grayscale" # Color mode, Default: grayscale, Choices: ['grayscale', 'false color jet', 'false color vidiris', 'binned coolwarm']
-  OUTPUT_NAME: "{{ output_name }}" # Output file name for the heatmap. The heatmap will be saved to {OUTPUT_FOLDER}
-  OUTPUT_MODES: "devs-overall" # Output modes, Default: devs-overall, Choices: ['devs-overall', 'devs-rows', 'devs-cols'']
+  MODEL_FILE_PATH1: \llama-2-7b.Q8_0\llama-2-7b.Q8_0.gguf # Filename for the first model, can be GGUF or PyTorch (if PyTorch support available)"
+  MODEL_FILE_PATH2: \llama-2-7b-chat.Q8_0\llama-2-7b-chat.Q8_0.gguf # Filename for the second model, can be GGUF or PyTorch (if PyTorch support available)"
+  TENSOR_NAME: blk.2.ffn_down.weight # Tensor name, must be from models with the same foundation architecture for the differences to be valid.
+  COMPARISON_TYPE: mean # "Comparison types, Default: mean, Choices: ['mean', 'median', 'absolute']"
+  COLOR_MODE: grayscale # Color mode, Default: grayscale, Choices: ['grayscale', 'false color jet', 'false color vidiris', 'binned coolwarm']
+  OUTPUT_NAME: heatmap.geotiff # Output file name for the heatmap. The heatmap will be saved to {OUTPUT_FOLDER}
+  OUTPUT_MODES: devs-overall # Output modes, Default: devs-overall, Choices: ['devs-overall', 'devs-rows', 'devs-cols'']
 
 
 
