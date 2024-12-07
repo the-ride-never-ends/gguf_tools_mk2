@@ -91,6 +91,7 @@ class Quantized_Q8_0(_Quantized):  # noqa: N801
     ) -> npt.NDArray[np.float32]:
 
         blocks = arr.view(dtype=cls.dtype)
+        #return (blocks["d"][:, None] * np.float32(blocks["qs"])).flatten()
 
         # Unoptimized hack-around for broadcasting errors.
         # TODO This is trashy and gross. Learn numpy and fix it!
@@ -133,4 +134,4 @@ class Quantized_Q8_0(_Quantized):  # noqa: N801
         # # logger.debug(f"result: {result}",f=True,t=30)
 
         # return results.flatten()
-        # # return (blocks["d"][:, None] * np.float32(blocks["qs"])).flatten()
+        # # 

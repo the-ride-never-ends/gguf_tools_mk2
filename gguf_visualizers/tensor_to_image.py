@@ -88,14 +88,20 @@ def calculate_mad_and_median(tensor: npt.NDArray[np.float32], axis: int = None) 
     """
     Median and MADs (Median Absolute Deviation). MAD = median(|Yi - median(Yi)|)
     """
-    median = np.median(tensor, dtype=np.float64, axis=axis)
-    mad = np.median(np.abs(tensor - median), dtype=np.float64, axis=axis)
-    return median[:, None], mad[:, None] if axis == 1 else median, mad
+    median = np.median(tensor, axis=axis)
+    mad = np.median(np.abs(tensor - median), axis=axis) # MAD
+    if axis == 1:
+        return median[:, None], mad[:, None]
+    else:
+        return median, mad
 
 def calculate_mean_and_standard_deviation(tensor: npt.NDArray[np.float32], axis: int = None) -> tuple[float,float]:
     mean = np.mean(tensor, dtype=np.float64, axis=axis)
     std_dev = np.std(tensor, dtype=np.float64, axis=axis)
-    return mean[:, None], std_dev[:, None] if axis == 1 else mean, std_dev
+    if axis == 1:
+        return mean[:, None], std_dev[:, None]
+    else:
+        return mean, std_dev
 
 
 def comfyui_node():
@@ -152,38 +158,53 @@ def gguf_tensor_to_image_comfy_ui_node(
     return {"ui": {"images": [run.heatmap_image]}} 
 
 
-["mean", "median", "absolute"],
+["mean", "median", "absolute"]
 
 class TensorToImage:
 
+    SUPPORTED_IMAGE_TYPES = ('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.geotiff', '.tif')
+    SUPPORTED_MODEL_TYPES = ('.gguf','.pth')
+
     def __init__(self, **kwargs) -> None:
         # NOTE YAML constants always take precedent over interactive arguments.
-        self.adjust_1d_rows: int = ADJUST_1D_ROWS or kwargs.pop("adjust_1d_rows",  32)
-        self.mode: str = OUTPUT_MODE or kwargs.pop("mode", "mean-devs-overall")
 
-        self.model: str = MODEL or kwargs.pop("model")
+        # Load configuration
+        self._load_config(kwargs)
+
+        # Set up model
+        self._setup_model()
+
+        # Set up tensor parameters
+        self._setup_tensor_parameters(kwargs)
+
+        # Set up output parameters
+        self._setup_output_parameters(kwargs)
+
+        # Set up processing parameters
+        self._setup_processing_parameters()
+
+    def _load_config(self, kwargs):
+        self.adjust_1d_rows = ADJUST_1D_ROWS or kwargs.pop("adjust_1d_rows", 32)
+        self.output_mode = OUTPUT_MODE or kwargs.pop("output_mode", "mean-devs-overall")
+        self.model = MODEL or kwargs.pop("model")
+        self.model_type = MODEL_TYPE or kwargs.pop("model_type")
+        self.match_glob = MATCH_GLOB or kwargs.pop("match_glob", True)
+        self.match_regex = MATCH_REGEX or kwargs.pop("match_regex", True)
+        self.match_1d = MATCH_1D or kwargs.pop("match_1d", True)
+        self.scale = SCALE or kwargs.pop("scale", 1.0)
+        self.show_with = SHOW_WITH or kwargs.pop("show_with", None)
+        self.color_ramp_type = COLOR_RAMP_TYPE or kwargs.pop("color_ramp_type", "continuous")
+
+
+    def _setup_model(self):
+
         if self.model is None:
             raise ValueError("No model specified in MakeImage class parameters")
+
         self.model_path: str = os.path.join(INPUT_FOLDER, self.model.lstrip("/\\"))
+
         if not os.path.exists(self.model_path):
             raise FileNotFoundError(f"Model file not found: {self.model_path}")
-
-        self.model_type: str = MODEL_TYPE or kwargs.pop("model_type")
-        self.match_glob: bool = MATCH_GLOB or kwargs.pop("match_glob", True)
-        self.match_regex: bool = MATCH_REGEX or kwargs.pop("match_regex", True)
-
-        if self.match_glob and self.match_regex:
-            logger.warning("match_glob and match_regex are mutually exclusive options. Defaulting to match_glob...")
-            self.match_regex = False
-
-        self.match_1d: bool = MATCH_1D or kwargs.pop("match_1d", True)
-
-        _output_file_name = OUTPUT_NAME or kwargs.pop("output", "output.png")
-        self.output_path: Path = os.path.join(OUTPUT_FOLDER, _output_file_name)
-
-        self.scale: float = SCALE or kwargs.pop("scale", 1.0)
-        self.show_with: str = SHOW_WITH or kwargs.pop("show_with", None)
-        self.heatmap_image = None
 
         # Change self.model from the model's file path to an instance of it.
         self.model: Model
@@ -193,10 +214,28 @@ class TensorToImage:
             self.model = TorchModel(self.model_path)
         else:
             raise ValueError("Unsupported model type.")
+    
         logger.info("Model loaded successfully")
 
-        self.tensor_name: str = TENSOR_NAME or kwargs.pop("tensor", "blk.2.ffn_down.weight")
-        self.names: list[str] = self.get_tensor_names()
+
+    def _setup_tensor_parameters(self, kwargs):
+        if self.match_glob and self.match_regex:
+            logger.warning("match_glob and match_regex are mutually exclusive options. Defaulting to match_glob...")
+            self.match_regex = False
+
+        self.tensor_name: str = TENSOR_NAME or kwargs.pop("tensor_name", "blk.2.ffn_down.weight")
+        self.names: str | list[str] = self.get_tensor_names()
+
+
+    def _setup_output_parameters(self, kwargs):
+        _output_file_name = OUTPUT_NAME or kwargs.pop("output_name", "output.png")
+        self.output_path = Path(OUTPUT_FOLDER) / _output_file_name
+        self.heatmap_image: Image = None
+
+
+    def _setup_processing_parameters(self):
+        # Any additional processing parameters can be set up here
+        pass
 
 
     def get_tensor_names(self) -> list[str]:
@@ -218,26 +257,45 @@ class TensorToImage:
             - For regex matching, re.compile and search are used.
             - When neither glob nor regex matching is used, only valid tensor names are included.
         """
-        if self.match_glob:
-            names = [ # Use fnmatch to find tensor names that match the given glob patterns
-                name for name in self.model.tensor_names()
-                if any(fnmatch.fnmatchcase(name, pat) for pat in self.tensor_name)
-            ]
-        elif self.match_regex:
-            res = [re.compile(r) for r in self.tensor_name] # Compile the regex patterns
-            names =  [  # Find tensor names that match any of the compiled regex patterns
-                name for name in self.model.tensor_names() if any(r.search(name) for r in res)
-            ]
-        else:
-            # Use the tensor names provided directly, but only if they are valid
-            names = [name for name in self.tensor_name if self.model.valid(name)[0]]
 
-        if len(names) == 0:
-            logger.error(f"No names found in loaded model\nnames: {names}")
-            raise ValueError("No names found in loaded model")
+        tensor_dict = {name: self.model.get_type_name(name) for name in self.model.tensor_names()}
+        # logger.debug(f"tensor_dict: {tensor_dict}")
+
+
+        if len(tensor_dict) == 0:
+            logger.error(f"No tensors found in loaded model")
+            raise ValueError("No tensors found in loaded model")
+        elif self.tensor_name not in tensor_dict:
+            logger.error(f"Specified tensor '{self.tensor_name}' not found in model")
+            raise ValueError(f"Specified tensor '{self.tensor_name}' not found in model")
         else:
-            logger.info(f"Got tensors: {names}")
-            return names
+            logger.info(f"Found specified tensor: {self.tensor_name}")
+            if len(self.tensor_name) == 1:
+                return self.tensor_name
+            else:
+                return tensor_dict[self.tensor_name]
+
+    
+        # if self.match_glob:
+        #     names = [ # Use fnmatch to find tensor names that match the given glob patterns
+        #         name for name in self.model.tensor_names()
+        #         if any(fnmatch.fnmatchcase(name, pat) for pat in self.tensor_name)
+        #     ]
+        # elif self.match_regex:
+        #     res = [re.compile(r) for r in self.tensor_name] # Compile the regex patterns
+        #     names =  [  # Find tensor names that match any of the compiled regex patterns
+        #         name for name in self.model.tensor_names() if any(r.search(name) for r in res)
+        #     ]
+        # else:
+        #     # Use the tensor names provided directly, but only if they are valid
+        #     names = [name for name in self.tensor_name if self.model.valid(name)[0]]
+
+        # if len(tensor_dict) == 0:
+        #     logger.error(f"No names found in loaded model\nnames: {tensor_dict}")
+        #     raise ValueError("No names found in loaded model")
+        # else:
+        #     if self.tensor_name in tensor_dict
+        #     return tensor_dict
 
 
     def reshape_1d_tensor_into_2d_if_desired(self, tensor: npt.NDArray[np.float32]) -> npt.NDArray[np.float32]:
@@ -287,7 +345,7 @@ class TensorToImage:
             ValueError: If an unknown mode is specified.
 
         Notes:
-            - The mode is determined by the self.mode attribute.
+            - The mode is determined by the self.output_mode attribute.
             - Available modes:
                 - "devs-overall", "mean-devs-overall": Overall mean and standard deviation
                 - "devs-rows", "mean-devs-rows": Mean and standard deviation by rows
@@ -296,27 +354,80 @@ class TensorToImage:
                 - "median-devs-rows": Median and MAD by rows
                 - "median-devs-cols": Median and MAD by columns
         """
-            # Calculate mean and SD based on arguments.
-        match self.mode:
+            # Calculate central tendency and deviation based on arguments.
+        match self.output_mode:
             # Means and Standard Deviations
             case "devs-overall" | "mean-devs-overall":
                 central_tendency, deviation = calculate_mean_and_standard_deviation(tensor)
+                type_ = "mean", "standard deviation"
             case "devs-rows" | "mean-devs-rows":
                 central_tendency, deviation = calculate_mean_and_standard_deviation(tensor,axis=1)
+                type_ = "mean", "standard deviation"
             case "devs-cols" | "mean-devs-cols":
                 central_tendency, deviation = calculate_mean_and_standard_deviation(tensor,axis=0)
+                type_ = "mean", "standard deviation"
 
             # Median and MADs (Median Absolute Deviation). MAD = median(|Yi – median(Yi)|)
             case "median-devs-overall":
                 central_tendency, deviation = calculate_mad_and_median(tensor)
+                type_ = "median", "median absolute deviation"
             case "median-devs-rows":
                 central_tendency, deviation = calculate_mad_and_median(tensor, axis=1)
+                type_ = "median", "median absolute deviation"
             case "median-devs-cols":
                 central_tendency, deviation = calculate_mad_and_median(tensor, axis=0)
+                type_ = "median", "median absolute deviation"
             case _:
                 raise ValueError("Unknown mode")
+        
+        logger.info(f"""
+            *** Tensor Stats ***
+            name: {self.tensor_name}
+            shape: {tensor.shape}
+            __len__: {tensor.__len__()}
+            {type_[0]}: {central_tendency}
+            {type_[1]}: {deviation}
+            max: {np.max(tensor)}
+            min: {np.min(tensor)}
+        """)
 
         return central_tendency, deviation
+
+    
+    def normalize_tensor_by_central_tendency_and_deviation(self,
+                                                          tensor: npt.NDArray[np.float32],
+                                                          central_tendency: float,
+                                                          deviation: float
+                                                          ) -> npt.NDArray[np.float32]:
+        """
+        Transform a tensor of values into a tensor of normalized standard deviations 
+            based on the mean of those values.
+
+        Args:
+            tensor (npt.NDArray[np.float32]): Input tensor to be normalized.
+            central_tendency (float): A measure of central tendency (mean, median, etc.)
+            deviation (float): A measure of deviancy based on the central tendency (standard deviation, median absolute deviation, etc.)
+
+        Returns:
+            npt.NDArray[np.float32]: Normalized tensor of standard deviations.
+
+        This method performs the following steps:
+        1. Calculate the mean (central tendency) of the input tensor.
+        2. Calculate the standard deviation of the input tensor.
+        3. Subtract the mean from each value in the tensor.
+        4. Divide the result by the standard deviation.
+
+        The resulting tensor represents how many standard deviations each value
+        is away from the mean.
+        """
+
+        # Avoid division by zero
+        if deviation == 0:
+            return np.zeros_like(tensor)
+        
+        logger.info(f"Normalizing tensor: (tensor - {central_tendency}) / {deviation}")
+        normalized_tensor = (tensor - central_tendency) / deviation
+        return normalized_tensor
 
 
     def make_image_of_(self, 
@@ -365,7 +476,8 @@ class TensorToImage:
         sdn_thresh = central_tendency - CFG_SD_NEGATIVE_THRESHOLD * deviation
             # Calculate the absolute difference between the tensor data and the mean.
         tda = np.minimum(np.abs(tensor), sdp_max).repeat(3, axis=-1).reshape((*tensor.shape, 3))
-            # Scale that range to between 0 and 255.
+
+        # Scale that range to between 0 and 255.
         tda = 255 * ((tda - np.min(tda)) / np.ptp(tda))
 
         match self.color_ramp_type :
@@ -432,7 +544,7 @@ class TensorToImage:
             return self.model.get_as_f32(self.tensor_name)
 
 
-    def set_output_path_for_this_image_of_(self, tk: str) -> None:
+    def set_output_path_for_image(self, tk: str) -> None:
         """
         Set the output path for the image of a specific tensor.
 
@@ -456,15 +568,17 @@ class TensorToImage:
             raise ValueError("Bad tensor name")
 
         if self.output_path is not None:
+            self.output_path: Path
             if len(self.names) > 1:
-                filepath = self.output_path.parent
+                file_path = self.output_path.parent
                 filename = self.output_path.name
-                self.output_path = filepath / f"{tk}.{filename}"
+                self.output_path = file_path / f"tensor_to_image_{self.output_mode}_{tk}.{filename}"
         else:
             if len(self.names) > 1:
-                filepath = self.output_path.parent
+                self.output_path: Path
+                file_path = self.output_path.parent
                 filename = self.output_path.name
-                self.output_path = filepath / f"{tk}.{filename}"
+                self.output_path = file_path / f"tensor_to_image_{self.output_mode}{tk}.{filename}"
         return
 
 
@@ -494,50 +608,60 @@ class TensorToImage:
         Raises:
             Any exceptions from underlying methods (e.g., file I/O errors).
         """
-        logger.info(f"Matching tensors: {', '.join(repr(n) for n in self.names)}")
+        logger.info(f"Matching tensors: {self.tensor_name}")
+        # logger.info(f"len self.names: {len(self.names)}")
 
-        for tk in self.names:
-            tensor = self._extract_tensor_from_model()
+        #assert len(self.names) == 1, "Multiple layers not implemented at this time."
 
-            if not self.match_1d and len(tensor.shape) == 1:
-                continue
+        #for tk in self.names:
+        logger.info(f"Processing tensor {self.tensor_name!r}") #(type:{self.model.get_type_name(tk)}, shape:{tensor.shape})",)
+        tensor = self._extract_tensor_from_model()
 
-            self.reshape_1d_tensor_into_2d_if_desired(tensor)
+        if not self.match_1d and len(tensor.shape) == 1:
+            return #continue
 
-            if self.mode == "values-as-is":
+        self.reshape_1d_tensor_into_2d_if_desired(tensor)
+
+        self.set_output_path_for_image(self.tensor_name)
+
+        # Write to geotiff if it's the file extension.
+        if self.output_path.suffix.lower() in ('.tif', '.tiff', '.geotiff'):
+            if self.output_mode == "values-as-is":
+                logger.info("Saving tensor values as-is to tiff file.")
                 return write_array_to_geotiff(tensor, self.output_path)
+            else:
+                logger.info("Saving central tendency values to tiff file.")
+                central_tendency, deviation = self.return_central_tendency_and_deviation_metrics(tensor)
+                tensor = self.normalize_tensor_by_central_tendency_and_deviation(tensor, central_tendency, deviation)
+                return write_array_to_geotiff(tensor, self.output_path)
+        
+        central_tendency, deviation = self.return_central_tendency_and_deviation_metrics(tensor)
 
-            central_tendency, deviation = self.return_central_tendency_and_deviation_metrics(tensor)
+        self.heatmap_image = img = self.make_image_of_(tensor, central_tendency, deviation)
 
-            self.set_output_path_for_this_image_of_(tk)
+        if self.scale != 1.0: # Scale the image so that it fits on the screen (?)
+            self.heatmap_image = img = img.resize(
+                (
+                    max(1, int(img.width * self.scale)),
+                    max(1, int(img.height * self.scale)),
+                ),
+                resample=Image.Resampling.LANCZOS,
+            )
 
-            logger.info(f"Processing tensor {tk!r} (type:{self.model.get_type_name(tk)}, shape:{tensor.shape})",)
+        if self.output_path is not None:
+            logger.info(f"Saving to '{self.output_path}'...")
+            img.save(self.output_path)
 
-            self.heatmap_image = img = self.make_image_of_(tensor, central_tendency, deviation)
-
-            if self.scale != 1.0: # Scale the image so that it fits on the screen (?)
-                self.heatmap_image = img = img.resize(
-                    (
-                        max(1, int(img.width * self.scale)),
-                        max(1, int(img.height * self.scale)),
-                    ),
-                    resample=Image.Resampling.LANCZOS,
-                )
+        if self.show_with:
+            logger.info("Displaying to screen...")
 
             if self.output_path is not None:
-                logger.info(f"Saving to '{self.output_path}'...")
-                img.save(self.output_path)
-
-            if self.show_with:
-                logger.info("Displaying to screen...")
-
-                if self.output_path is not None:
-                    subprocess.call((self.show_with, self.output_path))  # noqa: S603
-                else:
-                    with tempfile.NamedTemporaryFile(suffix=".png") as fp:
-                        img.save(fp, format="png")
-                        fp.flush()
-                        subprocess.call((self.show_with, fp.name))  # noqa: S603
+                subprocess.call((self.show_with, self.output_path))  # noqa: S603
+            else:
+                with tempfile.NamedTemporaryFile(suffix=".png") as fp:
+                    img.save(fp, format="png")
+                    fp.flush()
+                    subprocess.call((self.show_with, fp.name))  # noqa: S603
 
 
 def create_parser() -> argparse.ArgumentParser:

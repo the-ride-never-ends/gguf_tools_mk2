@@ -2,6 +2,8 @@
 import numpy as np
 import numpy.typing as npt
 import rasterio
+from logger.logger import Logger
+logger = Logger(logger_name=__name__)
 
 def write_array_to_geotiff(
         array: npt.NDArray, 
