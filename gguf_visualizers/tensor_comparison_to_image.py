@@ -246,7 +246,7 @@ class TensorComparisonToImage:
             raise ValueError("Tensors must be of the same size")
         
         tensor_list = []
-        for i, tensor in enumerate([self.tensor1, self.tensor1], start=1):
+        for i, tensor in enumerate([self.tensor1, self.tensor2], start=1):
             model_name = getattr(self, f"model_file{i}")
 
             # Calculate numerically stable means and standard deviations
@@ -262,7 +262,7 @@ class TensorComparisonToImage:
         # Calculate the difference between normalized arrays.
         mean_diff_array = tensor_list[0] - tensor_list[1]
 
-        mean_diff_array = _check_if_array_was_normalized_correctly(mean_diff_array, self.tensor1, self.tensor1)
+        mean_diff_array = _check_if_array_was_normalized_correctly(mean_diff_array, self.tensor1, self.tensor2)
 
         return mean_diff_array
 
@@ -386,12 +386,14 @@ class TensorComparisonToImage:
 
         # Log basic stats for both tensors
         for i in [1, 2]:
-            tensor = getattr(self, f"tensor{i}")
-            logger.info(f"Tensor{i} ({self.tensor_name} from {getattr(self, f'model_file{i}')}) stats: max = {np.max(tensor):.4f}, min = {np.min(tensor):.4f}",f=True)
+            logger.info(f"Tensor{i} ({self.tensor_name} from {getattr(self, f'model_file{i}')}) stats\nmax = {np.max(getattr(self, f'tensor{i}')):.4f}\nmin = {np.min(getattr(self, f'tensor{i}')):.4f}",f=True)
 
         logger.info("Checking for identical tensors...")
         if np.array_equal(self.tensor1, self.tensor2):
-            logger.warning("* The input tensors are identical, differences will be zero.")
+            logger.error("* The input tensors are identical, differences will be zero.")
+            raise ValueError("Tensors must be different in order to perform meaningful comparisons.")
+        else:
+            logger.info("Tensors verified to not be identical.")
 
         # Perform tensor comparison based on specified type. Default is mean-based comparison.
         match self.comparison_type:
@@ -410,7 +412,7 @@ class TensorComparisonToImage:
 
         if self.output_name.endswith((".geotiff", ".tiff", ".tif",)):
             logger.info("Saving difference_comparison_result as a geotiff file...")
-            write_array_to_geotiff(difference_comparison_result)
+            write_array_to_geotiff(difference_comparison_result, self.output_path)
         else:
             self.heatmap_image: Image = self._covert_comparison_result_to_a_heatmap_image(
                                                 self.color_mode, 

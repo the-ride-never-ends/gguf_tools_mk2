@@ -61,6 +61,8 @@ class GGUFModel(Model):
 
     def get_as_f32(self, key: str) -> npt.NDArray[np.float32]:
         tensor = self.tensors[key]
+        logger.debug(f"tensor: {tensor}")
+        logger.debug(f"tensor.data: {tensor.data}")
         if tensor.tensor_type == self.gguf.GGMLQuantizationType.F16:
             return tensor.data.view(dtype=np.float32)
         if tensor.tensor_type == self.gguf.GGMLQuantizationType.F32:

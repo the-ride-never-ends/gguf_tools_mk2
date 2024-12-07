@@ -30,9 +30,9 @@ config: Callable = FileSpecificConfigs().config
 
 MODEL: str = config("MODEL")
 MODEL_TYPE: str = config("MODEL_TYPE")
-TENSOR: str = config("TENSOR")
+TENSOR_NAME: str = config("TENSOR_NAME")
 COLOR_RAMP_TYPE: str = config("COLOR_RAMP_TYPE")
-OUTPUT: Path = config("OUTPUT")
+OUTPUT_NAME: Path = config("OUTPUT_NAME")
 SHOW_WITH: str = config("SHOW_WITH")
 MATCH_GLOB: bool = config("MATCH_GLOB")
 MATCH_REGEX: bool = config("MATCH_REGEX")
@@ -40,7 +40,7 @@ MATCH_1D: bool = config("MATCH_1D")
 ADJUST_1D_ROWS: int = config("ADJUST_1D_ROWS")
 SCALE: float = config("SCALE")
 FORCE: bool = config("FORCE")
-MODE: str = config("MODE")
+OUTPUT_MODE: str = config("OUTPUT_MODE")
 
 try:
     from PIL import Image
@@ -159,7 +159,7 @@ class TensorToImage:
     def __init__(self, **kwargs) -> None:
         # NOTE YAML constants always take precedent over interactive arguments.
         self.adjust_1d_rows: int = ADJUST_1D_ROWS or kwargs.pop("adjust_1d_rows",  32)
-        self.mode: str = MODE or kwargs.pop("mode", "mean-devs-overall")
+        self.mode: str = OUTPUT_MODE or kwargs.pop("mode", "mean-devs-overall")
 
         self.model: str = MODEL or kwargs.pop("model")
         if self.model is None:
@@ -174,25 +174,28 @@ class TensorToImage:
 
         if self.match_glob and self.match_regex:
             logger.warning("match_glob and match_regex are mutually exclusive options. Defaulting to match_glob...")
-            self.match_regex = None
+            self.match_regex = False
 
         self.match_1d: bool = MATCH_1D or kwargs.pop("match_1d", True)
-        self.output: Path = OUTPUT or kwargs.pop("output", OUTPUT_FOLDER)
+
+        _output_file_name = OUTPUT_NAME or kwargs.pop("output", "output.png")
+        self.output_path: Path = os.path.join(OUTPUT_FOLDER, _output_file_name)
+
         self.scale: float = SCALE or kwargs.pop("scale", 1.0)
         self.show_with: str = SHOW_WITH or kwargs.pop("show_with", None)
         self.heatmap_image = None
 
-
         # Change self.model from the model's file path to an instance of it.
         self.model: Model
         if self.model_type == "gguf" or self.model.lower().endswith(".gguf"):
-            self.model = GGUFModel(self.model)
+            self.model = GGUFModel(self.model_path)
         elif self.model_type == "torch" or self.model.lower().endswith(".pth"):
-            self.model = TorchModel(self.model)
+            self.model = TorchModel(self.model_path)
         else:
             raise ValueError("Unsupported model type.")
+        logger.info("Model loaded successfully")
 
-        self.tensor_name: str = TENSOR or kwargs.pop("tensor", "blk.2.ffn_down.weight")
+        self.tensor_name: str = TENSOR_NAME or kwargs.pop("tensor", "blk.2.ffn_down.weight")
         self.names: list[str] = self.get_tensor_names()
 
 
@@ -216,18 +219,25 @@ class TensorToImage:
             - When neither glob nor regex matching is used, only valid tensor names are included.
         """
         if self.match_glob:
-            self.names = [ # Use fnmatch to find tensor names that match the given glob patterns
+            names = [ # Use fnmatch to find tensor names that match the given glob patterns
                 name for name in self.model.tensor_names()
                 if any(fnmatch.fnmatchcase(name, pat) for pat in self.tensor_name)
             ]
         elif self.match_regex:
             res = [re.compile(r) for r in self.tensor_name] # Compile the regex patterns
-            self.names = [  # Find tensor names that match any of the compiled regex patterns
+            names =  [  # Find tensor names that match any of the compiled regex patterns
                 name for name in self.model.tensor_names() if any(r.search(name) for r in res)
             ]
         else:
             # Use the tensor names provided directly, but only if they are valid
-            self.names = [name for name in self.tensor_name if self.model.valid(name)[0]]
+            names = [name for name in self.tensor_name if self.model.valid(name)[0]]
+
+        if len(names) == 0:
+            logger.error(f"No names found in loaded model\nnames: {names}")
+            raise ValueError("No names found in loaded model")
+        else:
+            logger.info(f"Got tensors: {names}")
+            return names
 
 
     def reshape_1d_tensor_into_2d_if_desired(self, tensor: npt.NDArray[np.float32]) -> npt.NDArray[np.float32]:
@@ -389,7 +399,7 @@ class TensorToImage:
         return Image.fromarray(tda.astype(np.uint8), "RGB")
 
 
-    def extract_tensor_from_model(self, model_file: str) -> npt.NDArray[np.float32]:
+    def _extract_tensor_from_model(self) -> npt.NDArray[np.float32]:
         """
         Extracts a tensor from a given model file based on the tensor name.
 
@@ -403,23 +413,23 @@ class TensorToImage:
             ValueError: If the model type is unknown or if the tensor extraction fails.
             NotImplementedError: If a Stable Diffusion model is provided (currently unsupported).
         """
-        # Initialize the model
-        match model_file.split('.')[-1].lower():
-            case "gguf":
-                model = GGUFModel(model_file)
-            case "pth":
-                model = TorchModel(model_file)
-            case "stable_diffusion":
-                raise NotImplementedError("Stable Diffusion models are not yet supported.")
-            case _:
-                raise ValueError("Unknown Model Type")
+        # # Initialize the model
+        # match model_file.split('.')[-1].lower():
+        #     case "gguf":
+        #         model = GGUFModel(model_file)
+        #     case "pth":
+        #         model = TorchModel(model_file)
+        #     case "stable_diffusion":
+        #         raise NotImplementedError("Stable Diffusion models are not yet supported.")
+        #     case _:
+        #         raise ValueError("Unknown Model Type")
 
         # Validate and retrieve the tensor
-        is_valid, error_message = model.valid(self.tensor_name)
+        is_valid, error_message = self.model.valid(self.tensor_name)
         if not is_valid:
-            raise ValueError(f"Error extracting tensor from {model_file}: {error_message}")
+            raise ValueError(f"Error extracting tensor from {self.model}: {error_message}")
         else: # If it's a valid tensor, cast it as an NDArray[Float32]
-            return model.get_as_f32(self.tensor_name)
+            return self.model.get_as_f32(self.tensor_name)
 
 
     def set_output_path_for_this_image_of_(self, tk: str) -> None:
@@ -437,22 +447,24 @@ class TensorToImage:
             ValueError: If the tensor name contains a forward slash ('/').
 
         Note:
-            - If self.output is set and multiple tensors are being processed,
+            - If self.output_path is set and multiple tensors are being processed,
             the method prepends the tensor name to the output filename.
-            - If self.output is not set and multiple tensors are being processed,
+            - If self.output_path is not set and multiple tensors are being processed,
             the method appends the tensor name to the output path.
         """
         if "/" in tk:
             raise ValueError("Bad tensor name")
 
-        if self.output is not None:
+        if self.output_path is not None:
             if len(self.names) > 1:
-                filepath = self.output.parent
-                filename = self.output.name
-                self.output = filepath / f"{tk}.{filename}"
+                filepath = self.output_path.parent
+                filename = self.output_path.name
+                self.output_path = filepath / f"{tk}.{filename}"
         else:
             if len(self.names) > 1:
-                self.output = self.output / f"{tk}.{filename}"
+                filepath = self.output_path.parent
+                filename = self.output_path.name
+                self.output_path = filepath / f"{tk}.{filename}"
         return
 
 
@@ -485,7 +497,7 @@ class TensorToImage:
         logger.info(f"Matching tensors: {', '.join(repr(n) for n in self.names)}")
 
         for tk in self.names:
-            tensor = self.model.get_as_f32(tk)
+            tensor = self._extract_tensor_from_model()
 
             if not self.match_1d and len(tensor.shape) == 1:
                 continue
@@ -493,7 +505,7 @@ class TensorToImage:
             self.reshape_1d_tensor_into_2d_if_desired(tensor)
 
             if self.mode == "values-as-is":
-                return write_array_to_geotiff(tensor)
+                return write_array_to_geotiff(tensor, self.output_path)
 
             central_tendency, deviation = self.return_central_tendency_and_deviation_metrics(tensor)
 
@@ -512,15 +524,15 @@ class TensorToImage:
                     resample=Image.Resampling.LANCZOS,
                 )
 
-            if self.output is not None:
-                logger.info(f"Saving to '{self.output}'...")
-                img.save(self.output)
+            if self.output_path is not None:
+                logger.info(f"Saving to '{self.output_path}'...")
+                img.save(self.output_path)
 
             if self.show_with:
                 logger.info("Displaying to screen...")
 
-                if self.output is not None:
-                    subprocess.call((self.show_with, self.output))  # noqa: S603
+                if self.output_path is not None:
+                    subprocess.call((self.show_with, self.output_path))  # noqa: S603
                 else:
                     with tempfile.NamedTemporaryFile(suffix=".png") as fp:
                         img.save(fp, format="png")
