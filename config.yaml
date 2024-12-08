@@ -11,15 +11,15 @@ TENSOR_TO_IMAGE:
   MODEL_TYPE: gguf
   TENSOR_NAME: blk.2.ffn_down.weight # blk.2.ffn_down.weight # Tensor name, may be specified multiple times UNLESS --match-glob or --match-regex is used
   COLOR_RAMP_TYPE: continuous # Color ramp type, Can be discrete or continuous
-  OUTPUT_NAME: llama-2-7b.Q8_0.gguf.blk.2.ffn_down.weight.geotiff # Output file, will be prefixed with the tensor name if multiple tensor names are specified
-  SHOW_WITH: auto # Show the result with the specified application. WARNING: If processing multiple tensors and your image application does not block then you will end up with a bunch of huge images displayed at the same time
+  OUTPUT_NAME: llama-2-7b.Q8_0.gguf.blk.2.ffn_down.weight.png # Output file, will be prefixed with the tensor name if multiple tensor names are specified
+  SHOW_WITH: img # Show the result with the specified application. WARNING: If processing multiple tensors and your image application does not block then you will end up with a bunch of huge images displayed at the same time
   MATCH_GLOB: True # Interpret tensor name as a glob, so wildcards like blk.0.* will work
   MATCH_REGEX: True # Interpret tensor name as a regex, so regular expressions like ^blk\\.[012]\\.attn will work
   MATCH_1D: True # When using a wildcard, also match 1 dimensional tensors
   ADJUST_1D_ROWS: 32 # Instead of rendering 1D tensors as a wide image with one row, rearrange into multiple rows. For example, if we have a 1D tensor 3,200 elements and specify "--adjust-1d-rows 32", the output image will have dimensions 100x32. Note The tensor size must be divisible by the specified value.
   SCALE: 1.0 # Scale the image. Default: 1.0 (no scaling)
   FORCE: True # "Force overwriting the output file if it already exists"
-  OUTPUT_MODE: values-as-is #values-as-is # mean-devs-overall #values-as-is # 
+  OUTPUT_MODE: mean-devs-overall #values-as-is # mean-devs-overall #values-as-is # 
   #     Output modes (see below). Default: devs-overall
   #     NOTE: If the program is started using start.bat
   #     the options "mean-devs-overall", "mean-devs-rows", "mean-devs-cols" are available as aliases for
@@ -41,8 +41,8 @@ TENSOR_COMPARISON_TO_IMAGE:
   MODEL_FILE_PATH2: llama-2-7b-chat.Q8_0\llama-2-7b-chat.Q8_0.gguf # Filename for the second model, can be GGUF or PyTorch (if PyTorch support available)"
   TENSOR_NAME: blk.2.ffn_down.weight # blk.2.ffn_down.weight # Tensor name, must be from models with the same foundation architecture for the differences to be valid.
   COMPARISON_TYPE: mean # "Comparison types, Default: mean, Choices: ['mean', 'median', 'absolute']"
-  COLOR_MODE: grayscale # Color mode, Default: grayscale, Choices: ['grayscale', 'false color jet', 'false color vidiris', 'binned coolwarm']
-  OUTPUT_NAME: comparison_llama.2.7b.base.q8.0.llama.2.7b.chat.q8.0blk.2.ffn_down.weight.geotiff # Output file name for the heatmap. The heatmap will be saved to {OUTPUT_FOLDER}
+  COLOR_MODE: "false color jet" # Color mode, Default: grayscale, Choices: ['grayscale', 'false color jet', 'false color vidiris', 'binned coolwarm']
+  OUTPUT_NAME: comparison_llama.2.7b.base.q8.0.llama.2.7b.chat.q8.0blk.2.ffn_down.weight.png # Output file name for the heatmap. The heatmap will be saved to {OUTPUT_FOLDER}
   OUTPUT_MODE: devs-overall # Output modes, Default: devs-overall, Choices: ['devs-overall', 'devs-rows', 'devs-cols'']
 
 

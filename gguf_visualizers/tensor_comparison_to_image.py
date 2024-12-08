@@ -54,6 +54,7 @@ def tensor_comparison_to_image_comfy_ui_node(
                                             comparison_type: str, 
                                             color_mode: str, 
                                             output_name: str, 
+                                            output_mode: str,
                                             ) -> None:
         """
         ComfyUI node for generating a heatmap of the difference between two tensors in two models.
@@ -67,7 +68,8 @@ def tensor_comparison_to_image_comfy_ui_node(
             tensor_name=tensor_name,
             comparison_type=comparison_type,
             color_mode=color_mode,
-            output_name=output_name
+            output_name=output_name,
+            output_mode=output_mode
             )
         run.tensor_comparison_to_image()
 

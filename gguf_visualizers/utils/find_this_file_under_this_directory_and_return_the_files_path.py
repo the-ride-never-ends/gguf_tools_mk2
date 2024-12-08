@@ -10,7 +10,7 @@ def find_this_file_under_this_directory_and_return_the_files_path(file_name: str
     Args:
         file_name (str): The name of the file to search for.
     Returns:
-        the path of the file
+        A Path object of the file's path
     """
     for root, _, files in os.walk(directory):
         if file_name in files:

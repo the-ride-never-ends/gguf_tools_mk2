@@ -104,13 +104,27 @@ def calculate_mean_and_standard_deviation(tensor: npt.NDArray[np.float32], axis:
         return mean, std_dev
 
 
+# from random import random
+# from easy_nodes import (
+#     NumberInput,
+#     ComfyNode,
+#     MaskTensor,
+#     StringInput,
+#     ImageTensor,
+#     Choice,
+# )
+# import easy_nodes
+# import torch
+
+
 def comfyui_node():
     pass
+
 
 #@comfyui_node()
 def gguf_tensor_to_image_comfy_ui_node(
                                     adjust_1d_rows: int = 32,
-                                    mode: str = "mean-devs-overall",
+                                    #mode: Choice["mean-devs-overall", "mean-devs-per-row", "mean-devs-overall"],
                                     model: str = None,
                                     model_type: str = None,
                                     match_glob: bool = True,
@@ -142,7 +156,7 @@ def gguf_tensor_to_image_comfy_ui_node(
     Returns:
         dict: A dictionary containing the UI information with the generated heatmap image.
     """
-    
+    mode = None
     run = TensorToImage(adjust_1d_rows=adjust_1d_rows,
                             mode=mode,
                             model=model,
@@ -156,6 +170,9 @@ def gguf_tensor_to_image_comfy_ui_node(
     run.tensor_to_image()
 
     return {"ui": {"images": [run.heatmap_image]}} 
+
+
+
 
 
 ["mean", "median", "absolute"]
@@ -653,15 +670,18 @@ class TensorToImage:
             img.save(self.output_path)
 
         if self.show_with:
-            logger.info("Displaying to screen...")
+            logger.info("Displaying to screen using img...")
 
             if self.output_path is not None:
-                subprocess.call((self.show_with, self.output_path))  # noqa: S603
+                # TODO Find a default program that works with this.
+                # subprocess.call((self.show_with, self.output_path))  # noqa: S603
+                img.show()
             else:
                 with tempfile.NamedTemporaryFile(suffix=".png") as fp:
                     img.save(fp, format="png")
+                    img.show()
                     fp.flush()
-                    subprocess.call((self.show_with, fp.name))  # noqa: S603
+                    #subprocess.call((self.show_with, fp.name))  # noqa: S603
 
 
 def create_parser() -> argparse.ArgumentParser:
