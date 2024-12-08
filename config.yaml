@@ -9,9 +9,9 @@ FILENAMES:
 TENSOR_TO_IMAGE:
   MODEL: llama-2-7b.Q8_0\llama-2-7b.Q8_0.gguf # model filename, can be GGUF or PyTorch (if PyTorch support available)
   MODEL_TYPE: gguf
-  TENSOR_NAME: blk.2.ffn_down.weight # blk.2.ffn_down.weight # Tensor name, may be specified multiple times UNLESS --match-glob or --match-regex is used
+  TENSOR_NAME: blk.30.attn_k.weight # blk.30.attn_k.weight # blk.2.ffn_down.weight # Tensor name, may be specified multiple times UNLESS --match-glob or --match-regex is used
   COLOR_RAMP_TYPE: continuous # Color ramp type, Can be discrete or continuous
-  OUTPUT_NAME: llama-2-7b.Q8_0.gguf.blk.2.ffn_down.weight.png # Output file, will be prefixed with the tensor name if multiple tensor names are specified
+  OUTPUT_NAME: llama-2-7b.Q8_0.gguf.png # Output file, will be prefixed with the tensor name if multiple tensor names are specified
   SHOW_WITH: img # Show the result with the specified application. WARNING: If processing multiple tensors and your image application does not block then you will end up with a bunch of huge images displayed at the same time
   MATCH_GLOB: True # Interpret tensor name as a glob, so wildcards like blk.0.* will work
   MATCH_REGEX: True # Interpret tensor name as a regex, so regular expressions like ^blk\\.[012]\\.attn will work
@@ -39,10 +39,10 @@ TENSOR_COMPARISON_TO_IMAGE:
   #     cols   : Same as above, except the calculation is based on columns.
   MODEL_FILE_PATH1: llama-2-7b.Q8_0\llama-2-7b.Q8_0.gguf # Filename for the first model, can be GGUF or PyTorch (if PyTorch support available)"
   MODEL_FILE_PATH2: llama-2-7b-chat.Q8_0\llama-2-7b-chat.Q8_0.gguf # Filename for the second model, can be GGUF or PyTorch (if PyTorch support available)"
-  TENSOR_NAME: blk.2.ffn_down.weight # blk.2.ffn_down.weight # Tensor name, must be from models with the same foundation architecture for the differences to be valid.
-  COMPARISON_TYPE: mean # "Comparison types, Default: mean, Choices: ['mean', 'median', 'absolute']"
-  COLOR_MODE: "false color jet" # Color mode, Default: grayscale, Choices: ['grayscale', 'false color jet', 'false color vidiris', 'binned coolwarm']
-  OUTPUT_NAME: comparison_llama.2.7b.base.q8.0.llama.2.7b.chat.q8.0blk.2.ffn_down.weight.png # Output file name for the heatmap. The heatmap will be saved to {OUTPUT_FOLDER}
+  TENSOR_NAME: blk.30.attn_k.weight # blk.30.attn_k.weight blk.2.ffn_down.weight # Tensor name, must be from models with the same foundation architecture for the differences to be valid.
+  COMPARISON_TYPE: absolute # "Comparison types, Default: mean, Choices: ['mean', 'median', 'absolute']"
+  COLOR_MODE: "false color viridis" # Color mode, Default: grayscale, Choices: ['grayscale', 'false color jet', 'false color viridis', 'binned coolwarm']
+  OUTPUT_NAME: comparison_absolute_llama.2.7b.base.q8.0.llama.2.7b.chat.q8.geotiff # Output file name for the heatmap. The heatmap will be saved to {OUTPUT_FOLDER}
   OUTPUT_MODE: devs-overall # Output modes, Default: devs-overall, Choices: ['devs-overall', 'devs-rows', 'devs-cols'']
 
 

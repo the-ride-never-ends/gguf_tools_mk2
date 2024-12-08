@@ -21,6 +21,15 @@ import numpy.typing as npt
 
 from .utils.write_array_to_geotiff import write_array_to_geotiff
 
+
+from config.config import (
+    CFG_SD_CLIP_THRESHOLD,
+    CFG_SD_POSITIVE_THRESHOLD,
+    CFG_SD_NEGATIVE_THRESHOLD,
+    CFG_NEG_SCALE,
+    CFG_POS_SCALE,
+    CFG_MID_SCALE,
+)
 from logger.logger import Logger
 logger = Logger(logger_name=__name__)
 
@@ -57,25 +66,6 @@ except ImportError as e:
 
 
 
-#### HARD CODED CONSTANTS ###
-# Clip values to at max 7 standard deviations from the mean.
-CFG_SD_CLIP_THRESHOLD = 7
-
-# Number of standard deviations above the mean to be positively scaled.
-CFG_SD_POSITIVE_THRESHOLD = 1
-
-# Number of standard deviations below the mean to be negatively scaled.
-CFG_SD_NEGATIVE_THRESHOLD = 1
-
-# RGB scaling for pixels that meet the negative threshold.
-CFG_NEG_SCALE = (1.2, 0.2, 1.2)
-
-# RGB scaling for pixels that meet the positive threshold.
-CFG_POS_SCALE = (0.2, 1.2, 1.2)
-
-# RGB scaling for pixels between those ranges.
-CFG_MID_SCALE = (0.1, 0.1, 0.1)
-# CFG_MID_SCALE = (0.6, 0.6, 0.9) Original Values
 
 
 from .model_classes.quantized_class import Quantized_Q8_0

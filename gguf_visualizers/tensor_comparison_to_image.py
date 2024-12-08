@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import re
 from textwrap import dedent
 from typing import Callable, Never
 
@@ -27,9 +28,19 @@ from .utils.find_this_file_under_this_directory_and_return_the_files_path import
 from .utils.write_array_to_geotiff import write_array_to_geotiff
 
 
-from config.config import OUTPUT_FOLDER, INPUT_FOLDER
+from config.config import (
+    OUTPUT_FOLDER,
+    INPUT_FOLDER,
+    CFG_SD_CLIP_THRESHOLD,
+    CFG_SD_POSITIVE_THRESHOLD,
+    CFG_SD_NEGATIVE_THRESHOLD,
+    CFG_NEG_SCALE,
+    CFG_POS_SCALE,
+    CFG_MID_SCALE
+)
 from logger.logger import Logger
 logger = Logger(logger_name=__name__)
+
 
 from config.file_specific_configs import FileSpecificConfigs
 config: Callable = FileSpecificConfigs().config
@@ -98,9 +109,10 @@ class TensorComparisonToImage:
         self.comparison_type: str = COMPARISON_TYPE or kwargs.pop("comparison_type")
         self.color_mode: str = COLOR_MODE or kwargs.pop("color_mode")
 
+
         self.output_name = OUTPUT_NAME or kwargs.pop(
             "output_name", 
-            f"diff_heatmap_{os.path.basename(self.model_file1)}_and_{os.path.basename(self.model_file1)}_{_right_now()}.png"
+            f"diff_map_{os.path.basename(self.model_file1)}_and_{os.path.basename(self.model_file1)}_{self.comparison_type}_{_right_now()}.png"
         )
         # find_this_file_under_this_directory_and_return_the_files_path
         self.output_path: str = os.path.join(OUTPUT_FOLDER, self.output_name)
@@ -111,6 +123,8 @@ class TensorComparisonToImage:
 
         self.tensor1: npt.NDArray[np.float32] = None
         self.tensor2: npt.NDArray[np.float32] = None
+        self.central_tendency: float | npt.NDArray[np.float32] = None
+        self.deviation: float | npt.NDArray[np.float32] = None
 
         # Load tensors from the models.
         self.tensor1 = self._extract_tensor_from_model(self.model_file1)
@@ -173,10 +187,7 @@ class TensorComparisonToImage:
             return model.get_as_f32(self.tensor_name)
 
 
-    def _directly_compare_tensor_values(self,
-        tensor1: npt.NDArray[np.float32], 
-        tensor2: npt.NDArray[np.float32]
-        ) -> npt.NDArray[np.float32]:
+    def _directly_compare_tensor_values(self) -> npt.NDArray[np.float32]:
         """
         Check and normalize the difference array, increasing precision and scaling if necessary.
 
@@ -185,8 +196,6 @@ class TensorComparisonToImage:
 
         Args:
             diff_array (npt.NDArray[np.float32]): The initial difference array to check and normalize.
-            tensor1 (npt.NDArray[np.float32]): The first input tensor used for normalization if needed.
-            tensor2 (npt.NDArray[np.float32]): The second input tensor used for normalization if needed.
 
         Returns:
             npt.NDArray[np.float32]: The normalized difference array.
@@ -200,30 +209,23 @@ class TensorComparisonToImage:
             - If still uniform, it applies a scaling factor of 100.0 to the input tensors and recalculates.
             - The function logs various information and warnings during the process.
         """
-
-        # Type check the tensors.
-        if not isinstance(self.tensor1, (npt.NDArray)):
-            raise TypeError(f"tensor1 is not a Numpy Array, but a {type(self.tensor1)}")
-        if not isinstance(self.tensor2, (npt.NDArray)):
-            raise TypeError(f"tensor2 is not a Numpy Array, but a {type(self.tensor2)}")
-
-        # Check if the tensors have the same dimensions.
-        if tensor1.shape != tensor2.shape:
-            raise ValueError("Input tensors must be the same size")
+        # Scale vectors by 1000 to prevent creation of a null array.
+        tensor1_times_1000 = self.tensor1 * 1000
+        tensor2_times_1000 = self.tensor2 * 1000
 
         # Compare element-wise differences into a single array for visualization
-        absolute_diff_array = self.tensor1 - self.tensor1
+        absolute_diff_array = tensor1_times_1000 - tensor2_times_1000
 
         # Figure out whether element-wise differences are additive or subtractive, relative to the tensor in model1
         #sign_of_diff = np.sign(tensor1 - tensor2)
 
         logger.info(f"""
             * Direct comparison:
-                max diff = {absolute_diff_array.max()}, 
-                min diff = {absolute_diff_array.min()}
+                max diff * 1000 = {absolute_diff_array.max()}, 
+                min diff * 1000 = {absolute_diff_array.min()}
         """)
 
-        return absolute_diff_array
+        return absolute_diff_array / 1000
 
 
     def _compare_normalized_tensor_means(self) -> npt.NDArray[np.float32]:
@@ -243,16 +245,15 @@ class TensorComparisonToImage:
             - Normalization is performed as: (tensor - mean) / standard_deviation
             - It uses the _check_if_array_was_normalized_correctly function to ensure proper normalization of the difference array.
         """
-        # Check is tensors are the same dimensions.
-        if self.tensor1.shape != self.tensor2.shape:
-            raise ValueError("Tensors must be of the same size")
-        
+
         tensor_list = []
         for i, tensor in enumerate([self.tensor1, self.tensor2], start=1):
             model_name = getattr(self, f"model_file{i}")
 
             # Calculate numerically stable means and standard deviations
             mean, std_dev = np.mean(tensor, dtype=np.float64), np.std(tensor, dtype=np.float64)
+            self.central_tendency = mean
+            self.deviation = std_dev
 
             # Log tensor values for diagnostics
             logger.info(f"* Tensor ({self.tensor_name} from {model_name}) stats\nmean = {mean}\nsd = {std_dev}\n\nmax = {tensor.max()}\nmin = {tensor.min()}",f=True)
@@ -293,6 +294,8 @@ class TensorComparisonToImage:
             # Calculate numerically stable medians and MADs (Median Absolute Deviation). MAD = median(|Yi – median(Yi)|)
             logger.info(f"Calculating stable medians and MADs (Median Absolute Deviation) for {tensor_name}.")
             median, mad = np.median(tensor, dtype=np.float64), np.median(np.abs(tensor - np.median(tensor)))
+            self.central_tendency = median
+            self.deviation = mad
 
             logger.info(f"""
                 * Tensor{i} ({tensor_name} from {model_file}) stats:
@@ -342,8 +345,29 @@ class TensorComparisonToImage:
             case "false color jet":
                 colormap_output = plt.cm.jet(diff_array)
 
-            case "false color vidiris":
+            case "false color viridis":
                 colormap_output = plt.cm.viridis(diff_array)
+
+            case "false color plasma":
+                colormap_output = plt.cm.plasma(diff_array)
+
+            case "false color inferno":
+                colormap_output = plt.cm.inferno(diff_array)
+
+            case "false color magma":
+                colormap_output = plt.cm.magma(diff_array)
+
+            case "false color cividis":
+                colormap_output = plt.cm.cividis(diff_array)
+
+            case "false color twilight":
+                colormap_output = plt.cm.twilight(diff_array)
+
+            case "false color rainbow":
+                colormap_output = plt.cm.rainbow(diff_array)
+
+            case "false color seismic":
+                colormap_output = plt.cm.seismic(diff_array)
 
             case "binned coolwarm":
                 # Create a custom colormap with discrete bins
@@ -352,6 +376,14 @@ class TensorComparisonToImage:
                 bounds = np.linspace(diff_array.min(), diff_array.max(), n_bins + 1)
                 norm = BoundaryNorm(bounds, cmap.N)
                 colormap_output = cmap(norm(diff_array))
+            case "tensor_to_image style":
+                if self.central_tendency is None and self.deviation is None:
+                    logger.warning("Cannot find central tendency and/or deviation.\n'tensor_to_image style' relies on these to assign colors.\nDefaulting to grayscale...")
+                    colormap_output = plt.cm.gray(diff_array)
+                else:
+                    normalized_diff_array = self.normalize_tensor_by_central_tendency_and_deviation(diff_array, self.central_tendency, self.deviation)
+                    heatmap_image: Image = self.make_image_of_(normalized_diff_array, self.central_tendency, self.deviation)
+                    return heatmap_image
             case _:
                 logger.warning("Unknown color mode. Defaulting to grayscale...")
                 colormap_output = plt.cm.gray(diff_array)
@@ -370,18 +402,140 @@ class TensorComparisonToImage:
 
         logger.info(f"Converting to PIL Image...")
         if heatmap_array.ndim != 3 or heatmap_array.shape[2] != 3:
-            raise ValueError("Heatmap array must be 3-dimensional with 3 channels for RGB")
+            raise ValueError("Difference array must be 3-dimensional with 3 channels for RGB")
 
         # Apply colormap
-        match color_mode:
+        color_type = re.sub("false color","", color_mode).strip()
+        logger.debug(f"color_type: {color_type}")
+        match color_type:
             case "grayscale":
                 heatmap_image = Image.fromarray(heatmap_array, 'L')
-            case "false color jet" | "false color vidiris" | "binned coolwarm":
+            case color_type if color_type in ["jet", "viridis", "plasma", "inferno", "magma", "cividis", "twilight", "rainbow", "seismic"]:
+                heatmap_image = Image.fromarray(heatmap_array, 'RGB')
+            case "binned coolwarm":
                 heatmap_image = Image.fromarray(heatmap_array, 'RGB')
             case _:
-                heatmap_image = Image.fromarray(heatmap_array, 'L')
+                heatmap_image = Image.fromarray(heatmap_array, 'RGB')
 
         return heatmap_image
+
+
+    def normalize_tensor_by_central_tendency_and_deviation(self,
+                                                          tensor: npt.NDArray[np.float32],
+                                                          central_tendency: float,
+                                                          deviation: float
+                                                          ) -> npt.NDArray[np.float32]:
+        """
+        Transform a tensor of values into a tensor of normalized standard deviations 
+            based on the mean of those values.
+
+        Args:
+            tensor (npt.NDArray[np.float32]): Input tensor to be normalized.
+            central_tendency (float): A measure of central tendency (mean, median, etc.)
+            deviation (float): A measure of deviancy based on the central tendency (standard deviation, median absolute deviation, etc.)
+
+        Returns:
+            npt.NDArray[np.float32]: Normalized tensor of standard deviations.
+
+        This method performs the following steps:
+        1. Calculate the mean (central tendency) of the input tensor.
+        2. Calculate the standard deviation of the input tensor.
+        3. Subtract the mean from each value in the tensor.
+        4. Divide the result by the standard deviation.
+
+        The resulting tensor represents how many standard deviations each value
+        is away from the mean.
+        """
+
+        # Avoid division by zero
+        if deviation == 0:
+            return np.zeros_like(tensor)
+        
+        logger.info(f"Normalizing tensor: (tensor - {central_tendency}) / {deviation}")
+        normalized_tensor = (tensor - central_tendency) / deviation
+        return normalized_tensor
+
+
+    def make_image_of_(self, 
+                       tensor: npt.NDArray[np.float32],
+                       central_tendency: float,
+                       deviation: float,
+                       ) -> Image:
+        """
+        Create an image representation of a given tensor.
+
+        This method processes a tensor and converts it into an RGB image, where the color
+        intensity represents the deviation from the central tendency (mean or median).
+
+        Args:
+            tensor (npt.NDArray[np.float32]): Input tensor to be converted into an image.
+
+        Returns:
+            Image: A PIL Image object representing the tensor data.
+
+        The method performs the following steps:
+        1. Reshapes 1D tensors into 2D if necessary.
+        2. Calculates central tendency and deviation metrics based on the specified mode.
+        3. Maps tensor values to color intensities:
+        - For 'discrete' color ramp:
+            - Uses discrete color scales for negative and positive deviations.
+            - Darker reds represent more negative deviations.
+            - Darker greens represent more positive deviations.
+        - For 'continuous' color ramp:
+            - Applies continuous color scaling based on deviation thresholds.
+            - Red for negative deviations, green for positive, and scaled colors in between.
+        4. Converts the resulting color data into a PIL Image.
+
+        The color mapping is influenced by several class attributes and constants:
+        - self.color_ramp_type: Determines whether to use 'discrete' or 'continuous' color mapping.
+        - CFG_SD_CLIP_THRESHOLD: Maximum number of standard deviations for clipping.
+        - CFG_SD_POSITIVE_THRESHOLD, CFG_SD_NEGATIVE_THRESHOLD: Thresholds for positive and negative deviations.
+        - CFG_NEG_SCALE, CFG_POS_SCALE, CFG_MID_SCALE: Color scaling factors for different ranges.
+
+        Note:
+        - The color mapping logic is sensitive to the statistical properties of the input tensor.
+        """
+        # Map the 2D tensor data to the same range as an image 0-255.
+        sdp_max = central_tendency + CFG_SD_CLIP_THRESHOLD * deviation
+            # Set the positive and negative SD thresholds for this specific tensor.
+        sdp_thresh = central_tendency + CFG_SD_POSITIVE_THRESHOLD * deviation
+        sdn_thresh = central_tendency - CFG_SD_NEGATIVE_THRESHOLD * deviation
+            # Calculate the absolute difference between the tensor data and the mean.
+        tda = np.minimum(np.abs(tensor), sdp_max).repeat(3, axis=-1).reshape((*tensor.shape, 3))
+
+        # Scale that range to between 0 and 255.
+        tda = 255 * ((tda - np.min(tda)) / np.ptp(tda))
+        color_ramp_type = "discrete" # NOTE/TODO Hardcode this for now.
+
+        match color_ramp_type :
+            case "discrete":  # Discrete Colors
+                # Negative SD Values. This uses a discrete "Reds" color ramp, where darker reds represent more negative SD values.
+                tda[tensor <= (central_tendency - 6 * deviation), ...] *= (103,0,13)  # 67000d
+                tda[np.logical_and(tensor > (central_tendency - 6 * deviation), tensor <= (central_tendency - 5 * deviation)), ...] *= (179,18,24)  # b31218
+                tda[np.logical_and(tensor > (central_tendency - 5 * deviation), tensor <= (central_tendency - 4 * deviation)), ...] *= (221,42,37)  # dd2a25
+                tda[np.logical_and(tensor > (central_tendency - 4 * deviation), tensor <= (central_tendency - 3 * deviation)), ...] *= (246,87,62)  # f6573e
+                tda[np.logical_and(tensor > (central_tendency - 3 * deviation), tensor <= (central_tendency - 2 * deviation)), ...] *= (252,134,102)  # fc8666
+                tda[np.logical_and(tensor > (central_tendency - 2 * deviation), tensor <= (central_tendency - 1 * deviation)), ...] *= (252,179,152)  # fcb398
+                tda[np.logical_and(tensor > (central_tendency - 1 * deviation), tensor <= (central_tendency)), ...] *= (254,220,205)  # fedccd
+
+                # Positive SD Values. This uses a discrete "Greens" color ramp, where darker greens represent more positive SD values.
+                tda[np.logical_and(tensor > (central_tendency + 1 * deviation), tensor <= (central_tendency)), ...] *= (226,244,221)  # e2f4dd
+                tda[np.logical_and(tensor > (central_tendency + 2 * deviation), tensor <= (central_tendency + 1 * deviation)), ...] *= (191,230,185)  # bfe6b9
+                tda[np.logical_and(tensor > (central_tendency + 3 * deviation), tensor <= (central_tendency + 2 * deviation)), ...] *= (148,211,144)  # 94d390
+                tda[np.logical_and(tensor > (central_tendency + 4 * deviation), tensor <= (central_tendency + 3 * deviation)), ...] *= (96,186,108)  # 60ba6c
+                tda[np.logical_and(tensor > (central_tendency + 5 * deviation), tensor <= (central_tendency + 4 * deviation)), ...] *= (50,155,81)  # 329b51
+                tda[np.logical_and(tensor > (central_tendency + 6 * deviation), tensor <= (central_tendency + 5 * deviation)), ...] *= (13,120,53)  # 0d7835
+                tda[tensor >= (central_tendency + 6 * deviation), ...] *= (0,68,27)  # 00441b
+
+            case "continuous":  # Continuous Colors
+                tda[tensor <= sdn_thresh, ...] *= CFG_NEG_SCALE
+                tda[tensor >= sdp_thresh, ...] *= CFG_POS_SCALE
+                tda[np.logical_and(tensor > sdn_thresh, tensor < sdp_thresh), ...] *= CFG_MID_SCALE
+
+            case _:
+                raise ValueError("Unknown color ramp type")
+
+        return Image.fromarray(tda.astype(np.uint8), "RGB")
 
 
     def tensor_comparison_to_image(self) -> None:

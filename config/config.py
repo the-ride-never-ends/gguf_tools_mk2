@@ -13,6 +13,22 @@ YEAR_IN_DAYS: int = 365
 DEBUG_FILEPATH: str = os.path.join(MAIN_FOLDER, "debug_logs")
 RANDOM_SEED: int = 420
 
+# Define program-specific hard-coded constants
+# Clip values to at max 7 standard deviations from the mean.
+CFG_SD_CLIP_THRESHOLD = 7
+# Number of standard deviations above the mean to be positively scaled.
+CFG_SD_POSITIVE_THRESHOLD = 1
+# Number of standard deviations below the mean to be negatively scaled.
+CFG_SD_NEGATIVE_THRESHOLD = 1
+# RGB scaling for pixels that meet the negative threshold.
+CFG_NEG_SCALE = (1.2, 0.2, 1.2)
+# RGB scaling for pixels that meet the positive threshold.
+CFG_POS_SCALE = (0.2, 1.2, 1.2)
+# RGB scaling for pixels between those ranges.
+CFG_MID_SCALE = (0.1, 0.1, 0.1)
+# CFG_MID_SCALE = (0.6, 0.6, 0.9) Original Values
+
+
 # Get YAML config variables
 try:
     # SYSTEM
