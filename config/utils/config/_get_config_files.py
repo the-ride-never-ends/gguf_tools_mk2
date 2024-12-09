@@ -3,6 +3,7 @@ import os
 
 import yaml
 
+
 def get_config_files() -> dict:
     """
     Load YAML configuration files and return their contents.

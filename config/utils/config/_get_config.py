@@ -1,9 +1,8 @@
 from typing import Any
 
-from ._get_config_files import get_config_files
 
-# Load private and public config.yaml files.
-data: dict = get_config_files()
+from config.utils.config.__init__ import CONFIG_DATA
+
 
 def get_config(path:str, constant:str) -> Any | bool:
     """
@@ -28,12 +27,15 @@ def get_config(path:str, constant:str) -> Any | bool:
     keys = path.split('.') + [constant]
 
     # Traverse the nested dictionary
-    current_data = data
+    current_data = CONFIG_DATA
     for i, key in enumerate(keys):
         if isinstance(current_data, dict) and key in current_data:
             if i == len(keys) - 1:
-                print("***")
-                print(f"{'.'.join(keys[:i+1])} | {current_data[key]}")
+                full_key = '.'.join(keys[:i+1])
+                num_dashes_needed = len(full_key) * len(str(current_data[key]))
+                dashes = "-" * num_dashes_needed
+                current_data_key = current_data[key] if "PRIVATE" not in full_key else "XXXXXXXXXX"
+                print(f"{dashes}\n{full_key}: | {current_data_key} |")
                 return current_data[key]
             else:
                 current_data = current_data[key]
