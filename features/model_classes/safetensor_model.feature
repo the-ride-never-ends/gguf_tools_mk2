@@ -67,21 +67,28 @@ Feature: Safetensor Model Loading
     When I call the tensor_names method
     Then the tensor names should match the safetensor file's keys
 
-  Scenario Outline: Validate tensor existence and properties
-    Given a loaded SafetensorModel
-    Given a tensor named "<tensor_name>"
+  Scenario Outline: Validate tensor existence returns correct status
+    Given a loaded SafetensorModel with a tensor named "<tensor_name>"
     When I call the valid method with "<tensor_name>"
     Then the method should return "<valid>"
+
+    Examples:
+      | tensor_name           | valid |
+      | existing_tensor       | True  |
+      | nonexistent_tensor    | False |
+
+  Scenario Outline: Validate tensor existence returns correct message
+    Given a loaded SafetensorModel with a tensor named "<tensor_name>"
+    When I call the valid method with "<tensor_name>"
     Then the method should return message "<message>"
 
     Examples:
-      | tensor_name           | valid | message           |
-      | existing_tensor       | True  | OK                |
-      | nonexistent_tensor    | False | Tensor not found  |
+      | tensor_name           | message           |
+      | existing_tensor       | OK                |
+      | nonexistent_tensor    | Tensor not found  |
 
   Scenario Outline: Validate tensor types
-    Given a loaded SafetensorModel
-    Given a tensor with dtype "<tensor_dtype>"
+    Given a loaded SafetensorModel with a tensor with dtype "<tensor_dtype>"
     When I call the valid method for the tensor
     Then the method should return "<valid>" for type validation
 
@@ -96,8 +103,7 @@ Feature: Safetensor Model Loading
       | uint8        | False |
 
   Scenario Outline: Validate tensor dimensions
-    Given a loaded SafetensorModel
-    Given a tensor with "<dimensions>" dimensions
+    Given a loaded SafetensorModel with a tensor with "<dimensions>" dimensions
     When I call the valid method for the tensor
     Then the method should return "<valid>" for dimension validation
 
@@ -124,14 +130,12 @@ Feature: Safetensor Model Loading
     Then no file handles should remain open
 
   Scenario Outline: Get tensor data as float32
-    Given a loaded SafetensorModel
-    Given a tensor with dtype "<tensor_dtype>"
+    Given a loaded SafetensorModel with a tensor with dtype "<tensor_dtype>"
     When I call get_as_f32 for the tensor
     Then I should receive a numpy array with dtype float32
 
   Scenario Outline: Safetensor array shape matches original
-    Given a loaded SafetensorModel
-    Given a tensor with dtype "<tensor_dtype>"
+    Given a loaded SafetensorModel with a tensor with dtype "<tensor_dtype>"
     When I call get_as_f32 for the tensor
     Then the array shape should match the original tensor shape
 
@@ -144,26 +148,22 @@ Feature: Safetensor Model Loading
       | int32        |
 
   Scenario: Get float32 tensor without conversion
-    Given a loaded SafetensorModel
-    Given a tensor with dtype float32
+    Given a loaded SafetensorModel with a tensor with dtype float32
     When I call get_as_f32 for the tensor
     Then the original tensor data should be returned
 
   Scenario: No type conversion for float32 tensors
-    Given a loaded SafetensorModel
-    Given a tensor with dtype float32
+    Given a loaded SafetensorModel with a tensor with dtype float32
     When I call get_as_f32 for the tensor
     Then no type conversion should occur
 
   Scenario: Get non-float32 tensor with conversion
-    Given a loaded SafetensorModel
-    Given a tensor with dtype float16
+    Given a loaded SafetensorModel with a tensor with dtype float16
     When I call get_as_f32 for the tensor
     Then the tensor should be converted to float32 using astype
 
   Scenario: Non-float32 result has dtype float32
-    Given a loaded SafetensorModel
-    Given a tensor with dtype float16
+    Given a loaded SafetensorModel with a tensor with dtype float16
     When I call get_as_f32 for the tensor
     Then the result should have dtype float32
 
@@ -188,14 +188,12 @@ Feature: Safetensor Model Loading
     Then no file handles should remain open
 
   Scenario: Get tensor type name
-    Given a loaded SafetensorModel
-    Given a tensor with a specific dtype
+    Given a loaded SafetensorModel with a tensor with a specific dtype
     When I call get_type_name for the tensor
     Then I should receive the dtype as a string
 
   Scenario: Type name represents numpy dtype
-    Given a loaded SafetensorModel
-    Given a tensor with a specific dtype
+    Given a loaded SafetensorModel with a tensor with a specific dtype
     When I call get_type_name for the tensor
     Then the string should represent the numpy dtype
 

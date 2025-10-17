@@ -57,21 +57,28 @@ Feature: PyTorch Model Loading
     When I initialize a TorchModel
     Then singleton dimensions should be removed
 
-  Scenario Outline: Validate tensor existence and properties
-    Given a loaded TorchModel
-    Given a tensor named "<tensor_name>"
+  Scenario Outline: Validate tensor existence returns correct status
+    Given a loaded TorchModel with a tensor named "<tensor_name>"
     When I call the valid method with "<tensor_name>"
     Then the method should return "<valid>"
+
+    Examples:
+      | tensor_name           | valid |
+      | existing_tensor       | True  |
+      | nonexistent_tensor    | False |
+
+  Scenario Outline: Validate tensor existence returns correct message
+    Given a loaded TorchModel with a tensor named "<tensor_name>"
+    When I call the valid method with "<tensor_name>"
     Then the method should return message "<message>"
 
     Examples:
-      | tensor_name           | valid | message           |
-      | existing_tensor       | True  | OK                |
-      | nonexistent_tensor    | False | Tensor not found  |
+      | tensor_name           | message           |
+      | existing_tensor       | OK                |
+      | nonexistent_tensor    | Tensor not found  |
 
   Scenario Outline: Validate tensor types
-    Given a loaded TorchModel
-    Given a tensor with dtype "<tensor_dtype>"
+    Given a loaded TorchModel with a tensor of dtype "<tensor_dtype>"
     When I call the valid method for the tensor
     Then the method should return "<valid>" for type validation
 
@@ -85,8 +92,7 @@ Feature: PyTorch Model Loading
       | uint8        | False |
 
   Scenario Outline: Validate tensor dimensions
-    Given a loaded TorchModel
-    Given a tensor with "<dimensions>" dimensions
+    Given a loaded TorchModel with a tensor of "<dimensions>" dimensions
     When I call the valid method for the tensor
     Then the method should return "<valid>" for dimension validation
 
@@ -98,20 +104,29 @@ Feature: PyTorch Model Loading
       | 4          | False |
 
   Scenario Outline: Get tensor data as float32
-    Given a loaded TorchModel
-    Given a tensor with dtype "<tensor_dtype>"
+    Given a loaded TorchModel with a tensor of dtype "<tensor_dtype>"
     When I call get_as_f32 for the tensor
     Then the tensor should be converted to float32 dtype
 
+    Examples:
+      | tensor_dtype |
+      | float32      |
+      | float16      |
+      | bfloat16     |
+
   Scenario Outline: Tensor converted to numpy array with float32 dtype
-    Given a loaded TorchModel
-    Given a tensor with dtype "<tensor_dtype>"
+    Given a loaded TorchModel with a tensor of dtype "<tensor_dtype>"
     When I call get_as_f32 for the tensor
     Then I should receive a numpy array with dtype float32
 
+    Examples:
+      | tensor_dtype |
+      | float32      |
+      | float16      |
+      | bfloat16     |
+
   Scenario Outline: Numpy array shape matches original tensor
-    Given a loaded TorchModel
-    Given a tensor with dtype "<tensor_dtype>"
+    Given a loaded TorchModel with a tensor of dtype "<tensor_dtype>"
     When I call get_as_f32 for the tensor
     Then the array shape should match the original tensor shape
 
@@ -122,62 +137,52 @@ Feature: PyTorch Model Loading
       | bfloat16     |
 
   Scenario: Get float32 tensor as numpy array
-    Given a loaded TorchModel
-    Given a tensor with dtype float32
+    Given a loaded TorchModel with a tensor of dtype float32
     When I call get_as_f32 for the tensor
     Then the tensor should be converted to numpy format
 
   Scenario: Float32 dtype remains unchanged
-    Given a loaded TorchModel
-    Given a tensor with dtype float32
+    Given a loaded TorchModel with a tensor of dtype float32
     When I call get_as_f32 for the tensor
     Then the dtype should remain float32
 
   Scenario: Get float16 tensor as numpy array
-    Given a loaded TorchModel
-    Given a tensor with dtype float16
+    Given a loaded TorchModel with a tensor of dtype float16
     When I call get_as_f32 for the tensor
     Then the tensor should be converted to float32 dtype
 
   Scenario: Float16 converted to numpy format
-    Given a loaded TorchModel
-    Given a tensor with dtype float16
+    Given a loaded TorchModel with a tensor of dtype float16
     When I call get_as_f32 for the tensor
     Then then converted to numpy format
 
   Scenario: Float16 result has dtype float32
-    Given a loaded TorchModel
-    Given a tensor with dtype float16
+    Given a loaded TorchModel with a tensor of dtype float16
     When I call get_as_f32 for the tensor
     Then the result should have dtype float32
 
   Scenario: Get bfloat16 tensor as numpy array
-    Given a loaded TorchModel
-    Given a tensor with dtype bfloat16
+    Given a loaded TorchModel with a tensor of dtype bfloat16
     When I call get_as_f32 for the tensor
     Then the tensor should be converted to float32 dtype
 
   Scenario: Bfloat16 converted to numpy format
-    Given a loaded TorchModel
-    Given a tensor with dtype bfloat16
+    Given a loaded TorchModel with a tensor of dtype bfloat16
     When I call get_as_f32 for the tensor
     Then then converted to numpy format
 
   Scenario: Bfloat16 result has dtype float32
-    Given a loaded TorchModel
-    Given a tensor with dtype bfloat16
+    Given a loaded TorchModel with a tensor of dtype bfloat16
     When I call get_as_f32 for the tensor
     Then the result should have dtype float32
 
   Scenario: Get tensor type name
-    Given a loaded TorchModel
-    Given a tensor with a specific dtype
+    Given a loaded TorchModel with a specific dtype tensor
     When I call get_type_name for the tensor
     Then I should receive the dtype as a string
 
   Scenario: Type name represents torch dtype
-    Given a loaded TorchModel
-    Given a tensor with a specific dtype
+    Given a loaded TorchModel with a specific dtype tensor
     When I call get_type_name for the tensor
     Then the string should represent the torch dtype
 
