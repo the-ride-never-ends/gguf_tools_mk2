@@ -15,3 +15,4 @@ rasterio
 scipy
 openpyxl
 torch
+safetensors

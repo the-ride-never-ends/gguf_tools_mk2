@@ -17,7 +17,7 @@ import numpy.typing as npt
 from PIL import Image
 
 
-from gguf_visualizers.tensor_to_image import GGUFModel, TorchModel, Model
+from gguf_visualizers.tensor_to_image import GGUFModel, TorchModel, SafetensorModel, Model
 from .utils._have_the_same_file_extension import _have_the_same_file_extension
 from .utils._check_if_array_was_normalized_correctly import _check_if_array_was_normalized_correctly
 from .utils._right_now import _right_now
@@ -174,6 +174,8 @@ class TensorComparisonToImage:
                 model = GGUFModel(model_file)
             case "pth":
                 model = TorchModel(model_file)
+            case "safetensors":
+                model = SafetensorModel(model_file)
             case "stable_diffusion":
                 raise NotImplementedError("Stable Diffusion models are not yet supported.")
             case _:

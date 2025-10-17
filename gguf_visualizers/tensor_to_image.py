@@ -72,6 +72,7 @@ from .model_classes.quantized_class import Quantized_Q8_0
 from .model_classes.model_abstract_class import Model
 from .model_classes.gguf_model import GGUFModel
 from .model_classes.torch_model import TorchModel
+from .model_classes.safetensor_model import SafetensorModel
 
 
 def calculate_mad_and_median(tensor: npt.NDArray[np.float32], axis: int = None) -> tuple[float,float]:
@@ -170,7 +171,7 @@ def gguf_tensor_to_image_comfy_ui_node(
 class TensorToImage:
 
     SUPPORTED_IMAGE_TYPES = ('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.geotiff', '.tif')
-    SUPPORTED_MODEL_TYPES = ('.gguf','.pth')
+    SUPPORTED_MODEL_TYPES = ('.gguf','.pth','.safetensors')
 
     def __init__(self, **kwargs) -> None:
         # NOTE YAML constants always take precedent over interactive arguments.
@@ -219,6 +220,8 @@ class TensorToImage:
             self.model = GGUFModel(self.model_path)
         elif self.model_type == "torch" or self.model.lower().endswith(".pth"):
             self.model = TorchModel(self.model_path)
+        elif self.model_type == "safetensors" or self.model.lower().endswith(".safetensors"):
+            self.model = SafetensorModel(self.model_path)
         else:
             raise ValueError("Unsupported model type.")
     
