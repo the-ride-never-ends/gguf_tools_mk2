@@ -5,31 +5,44 @@ Feature: GGUF Model Loading
 
   Background:
     Given the gguf Python module is installed
-    And a valid GGUF model file exists
+    Given a valid GGUF model file exists
 
   Scenario: Successfully load a GGUF model file
     Given a GGUF model file path "models/test_model.gguf"
     When I initialize a GGUFModel with the file path
     Then the model should load successfully
-    And the model should contain tensor data
+
+  Scenario: Loaded GGUF model contains tensor data
+    Given a GGUF model file path "models/test_model.gguf"
+    When I initialize a GGUFModel with the file path
+    Then the model should contain tensor data
 
   Scenario: Load GGUF model without gguf module installed
     Given the gguf Python module is not installed
     When I attempt to initialize a GGUFModel
     Then the system should exit with an error
-    And an error message should indicate the gguf module is required
+
+  Scenario: Error message when gguf module is missing
+    Given the gguf Python module is not installed
+    When I attempt to initialize a GGUFModel
+    Then an error message should indicate the gguf module is required
 
   Scenario: Retrieve tensor names from GGUF model
     Given a loaded GGUFModel
     When I call the tensor_names method
     Then I should receive an iterable of tensor names
-    And the tensor names should match the model's content
+
+  Scenario: Tensor names match model content
+    Given a loaded GGUFModel
+    When I call the tensor_names method
+    Then the tensor names should match the model's content
 
   Scenario Outline: Validate tensor existence and properties
     Given a loaded GGUFModel
-    And a tensor named "<tensor_name>"
+    Given a tensor named "<tensor_name>"
     When I call the valid method with "<tensor_name>"
-    Then the method should return "<valid>" and "<message>"
+    Then the method should return "<valid>"
+    Then the method should return message "<message>"
 
     Examples:
       | tensor_name           | valid | message           |
@@ -38,7 +51,7 @@ Feature: GGUF Model Loading
 
   Scenario Outline: Validate tensor types
     Given a loaded GGUFModel
-    And a tensor with type "<tensor_type>"
+    Given a tensor with type "<tensor_type>"
     When I call the valid method for the tensor
     Then the method should return "<valid>" for type validation
 
@@ -52,7 +65,7 @@ Feature: GGUF Model Loading
 
   Scenario Outline: Validate tensor dimensions
     Given a loaded GGUFModel
-    And a tensor with "<dimensions>" dimensions
+    Given a tensor with "<dimensions>" dimensions
     When I call the valid method for the tensor
     Then the method should return "<valid>" for dimension validation
 
@@ -65,10 +78,15 @@ Feature: GGUF Model Loading
 
   Scenario Outline: Get tensor data as float32
     Given a loaded GGUFModel
-    And a tensor with type "<tensor_type>"
+    Given a tensor with type "<tensor_type>"
     When I call get_as_f32 for the tensor
     Then I should receive a numpy array with dtype float32
-    And the array shape should match the original tensor shape
+
+  Scenario Outline: Array shape matches original tensor shape
+    Given a loaded GGUFModel
+    Given a tensor with type "<tensor_type>"
+    When I call get_as_f32 for the tensor
+    Then the array shape should match the original tensor shape
 
     Examples:
       | tensor_type |
@@ -78,37 +96,57 @@ Feature: GGUF Model Loading
 
   Scenario: Get F16 tensor as float32
     Given a loaded GGUFModel
-    And a tensor with type F16
+    Given a tensor with type F16
     When I call get_as_f32 for the tensor
     Then the tensor data should be viewed as float32 dtype
 
   Scenario: Get F32 tensor as float32
     Given a loaded GGUFModel
-    And a tensor with type F32
+    Given a tensor with type F32
     When I call get_as_f32 for the tensor
     Then the original tensor data should be returned
 
   Scenario: Get Q8_0 tensor as float32
     Given a loaded GGUFModel
-    And a tensor with type Q8_0
+    Given a tensor with type Q8_0
     When I call get_as_f32 for the tensor
     Then the tensor should be dequantized
-    And the result should be reshaped to the original tensor shape
-    And the result should have dtype float32
+
+  Scenario: Q8_0 result is reshaped to original tensor shape
+    Given a loaded GGUFModel
+    Given a tensor with type Q8_0
+    When I call get_as_f32 for the tensor
+    Then the result should be reshaped to the original tensor shape
+
+  Scenario: Q8_0 result has dtype float32
+    Given a loaded GGUFModel
+    Given a tensor with type Q8_0
+    When I call get_as_f32 for the tensor
+    Then the result should have dtype float32
 
   Scenario: Get unsupported tensor type as float32
     Given a loaded GGUFModel
-    And a tensor with an unsupported type
+    Given a tensor with an unsupported type
     When I call get_as_f32 for the tensor
     Then a ValueError should be raised
-    And the error message should indicate "Unhandled tensor type"
+
+  Scenario: Unsupported tensor type error message
+    Given a loaded GGUFModel
+    Given a tensor with an unsupported type
+    When I call get_as_f32 for the tensor
+    Then the error message should indicate "Unhandled tensor type"
 
   Scenario: Get tensor type name
     Given a loaded GGUFModel
-    And a tensor with a specific quantization type
+    Given a tensor with a specific quantization type
     When I call get_type_name for the tensor
     Then I should receive the tensor type name as a string
-    And the name should match the GGMLQuantizationType name
+
+  Scenario: Tensor type name matches GGMLQuantizationType
+    Given a loaded GGUFModel
+    Given a tensor with a specific quantization type
+    When I call get_type_name for the tensor
+    Then the name should match the GGMLQuantizationType name
 
   Scenario: Handle missing tensor in get_as_f32
     Given a loaded GGUFModel
