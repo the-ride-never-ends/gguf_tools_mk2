@@ -11,7 +11,6 @@ output/*
 !output/_output_goes_here.txt
 
 database/
-tests/
 private/
 
 # IDE files
