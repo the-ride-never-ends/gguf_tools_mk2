@@ -233,7 +233,7 @@ def test_float16_converted_to_numpy_format():
 
     Given a loaded TorchModel with a tensor of dtype float16
     When I call get_as_f32 for the tensor
-    Then then converted to numpy format
+    Then converted to numpy format
     """
     pass
 
@@ -266,7 +266,7 @@ def test_bfloat16_converted_to_numpy_format():
 
     Given a loaded TorchModel with a tensor of dtype bfloat16
     When I call get_as_f32 for the tensor
-    Then then converted to numpy format
+    Then converted to numpy format
     """
     pass
 
