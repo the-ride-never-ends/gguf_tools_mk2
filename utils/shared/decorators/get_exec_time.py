@@ -2,7 +2,7 @@ from functools import wraps
 import time
 from typing import Any, Callable
 
-from logger import Logger
+from logger_ import Logger
 
 def get_exec_time(func: Callable) -> Any:
     """

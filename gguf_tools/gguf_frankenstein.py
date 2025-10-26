@@ -11,7 +11,7 @@ from gguf.constants import GGUFValueType, Keys
 from gguf.gguf_reader import GGUFReader
 from gguf.gguf_writer import GGUFWriter
 
-from logger.logger import Logger
+from logger_.logger import Logger
 logger = Logger(program_name=__name__)
 
 

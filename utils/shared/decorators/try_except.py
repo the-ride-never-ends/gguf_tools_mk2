@@ -46,7 +46,7 @@ import sys
 from typing import Any, Callable, Coroutine
 
 
-from logger.logger import Logger
+from logger_.logger import Logger
 
 
 # def _get_logger(func: Callable|Coroutine, logger: Logger=None):

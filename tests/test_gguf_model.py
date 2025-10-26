@@ -6,7 +6,6 @@ Generated from Gherkin feature file.
 
 import pytest
 
-
 def test_successfully_load_a_gguf_model_file():
     """
     Successfully load a GGUF model file

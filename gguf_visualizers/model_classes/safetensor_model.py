@@ -10,7 +10,7 @@ import numpy.typing as npt
 
 from .model_abstract_class import Model
 
-from logger.logger import Logger
+from logger_.logger import Logger
 logger = Logger(logger_name=__name__)
 
 
@@ -27,7 +27,7 @@ class SafetensorModel(Model):
         logger.info(f"* Loading Safetensor model: {filename}")
         self.filename = filename
         self.safe_open = safe_open
-        
+
         # Load tensor names and metadata
         with safe_open(filename, framework="numpy", device="cpu") as f:
             self.tensor_keys = list(f.keys())

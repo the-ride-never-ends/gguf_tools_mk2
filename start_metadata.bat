@@ -8,7 +8,7 @@ REM Echo to indicate the start of the Python script
 echo *** BEGIN PROGRAM ***
 
 REM Run the Python script
-python main.py REM main.py
+python tools\get_safetensor_metadata.py REM main.py
 
 REM Echo to indicate the end of the Python script
 echo *** END PROGRAM ***

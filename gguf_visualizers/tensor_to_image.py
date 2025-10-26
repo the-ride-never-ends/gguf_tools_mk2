@@ -15,11 +15,13 @@ from textwrap import dedent
 from typing import Any, Callable, Iterable, Protocol
 
 
+import tqdm
 import numpy as np
 import numpy.typing as npt
 
 
 from .utils.write_array_to_geotiff import write_array_to_geotiff
+from .tensor_to_graph import tensor_to_graph
 
 
 from config.config import (
@@ -30,8 +32,7 @@ from config.config import (
     CFG_POS_SCALE,
     CFG_MID_SCALE,
 )
-from logger.logger import Logger
-logger = Logger(logger_name=__name__)
+from logger import logger
 
 from config.config import OUTPUT_FOLDER, INPUT_FOLDER
 from config.file_specific_configs import FileSpecificConfigs
@@ -53,19 +54,22 @@ OUTPUT_MODE: str = config("OUTPUT_MODE")
 
 try:
     from PIL import Image
-except ImportError:
-    logger.error("This script requires Pillow installed. Example: pip install pillow")
-    sys.exit(1)
+except ImportError as e:
+    logger.error(f"{__file__} requires Pillow. Example: pip install pillow")
+    raise e
 
 try:
     from gguf.constants import GGMLQuantizationType
     from gguf.gguf_reader import GGUFReader, ReaderTensor
 except ImportError as e:
-    logger.error(f"Could not load GGMLQuantizationType, GGUFReader, ReaderTensor: {e}")
+    logger.error(f"{__file__} could not load GGMLQuantizationType, GGUFReader, ReaderTensor: {e}")
     raise e
 
-
-
+try:
+    import matplotlib.pyplot as plt
+except ImportError as e:
+    logger.error(f"{__file__} requires matplotlib installed. Example: pip install matplotlib")
+    raise e
 
 
 from .model_classes.quantized_class import Quantized_Q8_0
@@ -166,10 +170,50 @@ def gguf_tensor_to_image_comfy_ui_node(
 
 
 
+
+
+
+
+
+
+
+
 ["mean", "median", "absolute"]
 
 class TensorToImage:
-
+    """
+    A class for converting tensor data from machine learning models into visual representations.
+    This class supports extracting tensors from various model formats (GGUF, PyTorch, SafeTensors)
+    and converting them into heatmap images or GeoTIFF files. The visualization uses color mapping
+    to represent statistical deviations from central tendency measures.
+    Attributes:
+        SUPPORTED_IMAGE_TYPES (tuple): Supported output image file extensions.
+        SUPPORTED_MODEL_TYPES (tuple): Supported input model file extensions.
+    The class provides several visualization modes:
+        - Mean and standard deviation (overall, by rows, by columns)
+        - Median and median absolute deviation (overall, by rows, by columns)
+        - Raw values (for GeoTIFF output)
+    Color mapping options:
+        - Discrete: Uses predefined color scales with distinct color bins
+        - Continuous: Uses smooth color gradients based on deviation thresholds
+    Supported model formats:
+        - GGUF (.gguf): Quantized model format
+        - PyTorch (.pth): PyTorch model files
+        - SafeTensors (.safetensors): Safe tensor storage format
+    Output formats:
+        - Standard image formats: PNG, JPG, JPEG, BMP, GIF
+        - GeoTIFF formats: TIFF, TIF, GEOTIFF (preserves numerical values)
+    Example:
+        >>> converter = TensorToImage(
+        ...     model="my_model.gguf",
+        ...     tensor_name="blk.2.ffn_down.weight",
+        ...     output_mode="mean-devs-overall",
+        ...     output_name="tensor_visualization.png"
+        ... )
+        >>> converter.tensor_to_image()
+        Configuration parameters can be provided via YAML constants or keyword arguments,
+        with YAML constants taking precedence over interactive arguments.
+    """
     SUPPORTED_IMAGE_TYPES = ('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.geotiff', '.tif')
     SUPPORTED_MODEL_TYPES = ('.gguf','.pth','.safetensors')
 
@@ -195,7 +239,7 @@ class TensorToImage:
         self.adjust_1d_rows = ADJUST_1D_ROWS or kwargs.pop("adjust_1d_rows", 32)
         self.output_mode = OUTPUT_MODE or kwargs.pop("output_mode", "mean-devs-overall")
         self.model = MODEL or kwargs.pop("model")
-        self.model_type = MODEL_TYPE or kwargs.pop("model_type")
+        self.model_type: str = MODEL_TYPE or kwargs.pop("model_type")
         self.match_glob = MATCH_GLOB or kwargs.pop("match_glob", True)
         self.match_regex = MATCH_REGEX or kwargs.pop("match_regex", True)
         self.match_1d = MATCH_1D or kwargs.pop("match_1d", True)
@@ -210,12 +254,14 @@ class TensorToImage:
             raise ValueError("No model specified in MakeImage class parameters")
 
         self.model_path: str = os.path.join(INPUT_FOLDER, self.model.lstrip("/\\"))
+        logger.debug(f"self.model_path: {self.model_path}")
 
         if not os.path.exists(self.model_path):
             raise FileNotFoundError(f"Model file not found: {self.model_path}")
 
         # Change self.model from the model's file path to an instance of it.
         self.model: Model
+
         if self.model_type == "gguf" or self.model.lower().endswith(".gguf"):
             self.model = GGUFModel(self.model_path)
         elif self.model_type == "torch" or self.model.lower().endswith(".pth"):
@@ -267,10 +313,15 @@ class TensorToImage:
             - For regex matching, re.compile and search are used.
             - When neither glob nor regex matching is used, only valid tensor names are included.
         """
+        logger.debug("Creating tensor dictionary...")
 
-        tensor_dict = {name: self.model.get_type_name(name) for name in self.model.tensor_names()}
-        # logger.debug(f"tensor_dict: {tensor_dict}")
+        tensor_names = (name for name in self.model.tensor_names())
 
+        tensor_dict = {}
+        for name in tqdm.tqdm(tensor_names):
+            tensor_dict[name] = self.model.get_type_name(name)
+            if self.tensor_name in tensor_dict:
+                break
 
         if len(tensor_dict) == 0:
             logger.error(f"No tensors found in loaded model")
@@ -285,30 +336,8 @@ class TensorToImage:
             else:
                 return tensor_dict[self.tensor_name]
 
-    
-        # if self.match_glob:
-        #     names = [ # Use fnmatch to find tensor names that match the given glob patterns
-        #         name for name in self.model.tensor_names()
-        #         if any(fnmatch.fnmatchcase(name, pat) for pat in self.tensor_name)
-        #     ]
-        # elif self.match_regex:
-        #     res = [re.compile(r) for r in self.tensor_name] # Compile the regex patterns
-        #     names =  [  # Find tensor names that match any of the compiled regex patterns
-        #         name for name in self.model.tensor_names() if any(r.search(name) for r in res)
-        #     ]
-        # else:
-        #     # Use the tensor names provided directly, but only if they are valid
-        #     names = [name for name in self.tensor_name if self.model.valid(name)[0]]
 
-        # if len(tensor_dict) == 0:
-        #     logger.error(f"No names found in loaded model\nnames: {tensor_dict}")
-        #     raise ValueError("No names found in loaded model")
-        # else:
-        #     if self.tensor_name in tensor_dict
-        #     return tensor_dict
-
-
-    def reshape_1d_tensor_into_2d_if_desired(self, tensor: npt.NDArray[np.float32]) -> npt.NDArray[np.float32]:
+    def reshape_1d_tensor_into_2d(self, tensor: npt.NDArray[np.float32]) -> npt.NDArray[np.float32]:
         """
         Reshape a 1D tensor into a 2D tensor if desired.
 
@@ -336,7 +365,7 @@ class TensorToImage:
         return tensor
 
 
-    def return_central_tendency_and_deviation_metrics(self, tensor: npt.NDArray[np.float32]) -> tuple[float,float]:
+    def get_central_tendency_and_deviation(self, tensor: npt.NDArray[np.float32]) -> tuple[float,float]:
         """
         Calculate central tendency and deviation metrics for the given tensor.
 
@@ -348,8 +377,8 @@ class TensorToImage:
 
         Returns:
             tuple[float, float]: A tuple containing:
-                - central_tendency: Mean or median of the tensor.
-                - deviation: Standard deviation or MAD of the tensor.
+                - ct: Mean or median of the tensor.
+                - dv: Standard deviation or MAD of the tensor.
 
         Raises:
             ValueError: If an unknown mode is specified.
@@ -368,82 +397,144 @@ class TensorToImage:
         match self.output_mode:
             # Means and Standard Deviations
             case "devs-overall" | "mean-devs-overall":
-                central_tendency, deviation = calculate_mean_and_standard_deviation(tensor)
+                logger.info(f"Calculating mean and standard deviation overall for tensor: {self.tensor_name}")
+                ct, dv = calculate_mean_and_standard_deviation(tensor)
                 type_ = "mean", "standard deviation"
             case "devs-rows" | "mean-devs-rows":
-                central_tendency, deviation = calculate_mean_and_standard_deviation(tensor,axis=1)
+                logger.info(f"Calculating mean and standard deviation by rows for tensor: {self.tensor_name}")
+                ct, dv = calculate_mean_and_standard_deviation(tensor,axis=1)
                 type_ = "mean", "standard deviation"
             case "devs-cols" | "mean-devs-cols":
-                central_tendency, deviation = calculate_mean_and_standard_deviation(tensor,axis=0)
+                logger.info(f"Calculating mean and standard deviation by columns for tensor: {self.tensor_name}")
+                ct, dv = calculate_mean_and_standard_deviation(tensor,axis=0)
                 type_ = "mean", "standard deviation"
 
             # Median and MADs (Median Absolute Deviation). MAD = median(|Yi – median(Yi)|)
             case "median-devs-overall":
-                central_tendency, deviation = calculate_mad_and_median(tensor)
+                logger.info(f"Calculating median and median absolute deviation overall for tensor: {self.tensor_name}")
+                ct, dv = calculate_mad_and_median(tensor)
                 type_ = "median", "median absolute deviation"
             case "median-devs-rows":
-                central_tendency, deviation = calculate_mad_and_median(tensor, axis=1)
+                logger.info(f"Calculating median and median absolute deviation by rows for tensor: {self.tensor_name}")
+                ct, dv = calculate_mad_and_median(tensor, axis=1)
                 type_ = "median", "median absolute deviation"
             case "median-devs-cols":
-                central_tendency, deviation = calculate_mad_and_median(tensor, axis=0)
+                logger.info(f"Calculating median and median absolute deviation by columns for tensor: {self.tensor_name}")
+                ct, dv = calculate_mad_and_median(tensor, axis=0)
                 type_ = "median", "median absolute deviation"
             case _:
                 raise ValueError("Unknown mode")
-        
+
         logger.info(f"""
             *** Tensor Stats ***
             name: {self.tensor_name}
             shape: {tensor.shape}
             __len__: {tensor.__len__()}
-            {type_[0]}: {central_tendency}
-            {type_[1]}: {deviation}
+            {type_[0]}: {ct}
+            {type_[1]}: {dv}
             max: {np.max(tensor)}
             min: {np.min(tensor)}
         """)
 
-        return central_tendency, deviation
+        return ct, dv, type_
 
     
-    def normalize_tensor_by_central_tendency_and_deviation(self,
-                                                          tensor: npt.NDArray[np.float32],
-                                                          central_tendency: float,
-                                                          deviation: float
-                                                          ) -> npt.NDArray[np.float32]:
-        """
-        Transform a tensor of values into a tensor of normalized standard deviations 
+    def normalize(self, tensor: npt.NDArray[np.float32], ct: float, dv: float) -> npt.NDArray[np.float32]:
+        """Transform a tensor of values into a tensor of normalized standard deviations 
             based on the mean of those values.
 
         Args:
             tensor (npt.NDArray[np.float32]): Input tensor to be normalized.
-            central_tendency (float): A measure of central tendency (mean, median, etc.)
-            deviation (float): A measure of deviancy based on the central tendency (standard deviation, median absolute deviation, etc.)
+            ct (float): A measure of central tendency (mean, median, etc.)
+            dv (float): A measure of deviancy based on the central tendency 
+                (standard deviation, median absolute deviation, etc.)
 
         Returns:
             npt.NDArray[np.float32]: Normalized tensor of standard deviations.
-
-        This method performs the following steps:
-        1. Calculate the mean (central tendency) of the input tensor.
-        2. Calculate the standard deviation of the input tensor.
-        3. Subtract the mean from each value in the tensor.
-        4. Divide the result by the standard deviation.
-
-        The resulting tensor represents how many standard deviations each value
-        is away from the mean.
         """
-
         # Avoid division by zero
-        if deviation == 0:
-            return np.zeros_like(tensor)
-        
-        logger.info(f"Normalizing tensor: (tensor - {central_tendency}) / {deviation}")
-        normalized_tensor = (tensor - central_tendency) / deviation
-        return normalized_tensor
+        return np.zeros_like(tensor) if dv == 0 else (tensor - ct) / dv
+
+
+
+    def _scale_tensor_to_0_255(
+            self, 
+            tensor: npt.NDArray[np.float32],
+            ct: float, 
+            dv: float,
+            ) -> tuple[npt.NDArray[np.uint8], float, float]:
+        """
+        Scale a tensor to the 0-255 range for image representation.
+
+        Args:
+            tensor (npt.NDArray[np.float32]): Input tensor to be scaled.
+            ct (float): Central tendency value of the tensor.
+            dv (float): Deviation value of the tensor.
+
+        Returns:
+            tuple[npt.NDArray[np.uint8], float, float]: 
+                Scaled tensor with values in the 0-255 range, positive threshold, and negative threshold.
+        """
+        # Map the 2D tensor data to the same range as an image 0-255.
+        sdp_max = ct + CFG_SD_CLIP_THRESHOLD * dv
+            # Set the positive and negative SD thresholds for this specific tensor.
+        sdp_thresh = ct + CFG_SD_POSITIVE_THRESHOLD * dv
+        sdn_thresh = ct - CFG_SD_NEGATIVE_THRESHOLD * dv
+            # Calculate the absolute difference between the tensor data and the mean.
+        tda = np.minimum(np.abs(tensor), sdp_max).repeat(3, axis=-1).reshape((*tensor.shape, 3))
+
+        # Scale that range to between 0 and 255.
+        tda = 255 * ((tda - np.min(tda)) / np.ptp(tda))
+
+        return tda, sdp_thresh, sdn_thresh
+
+    def _map_discrete(self, 
+                      tda: npt.NDArray[np.uint8], 
+                      tensor: npt.NDArray[np.float32], 
+                      ct: float, 
+                      dv: float
+                      ) -> npt.NDArray[np.uint8]:
+        red_1, red_2, red_3, red_4, red_5, red_6, red_7 = (103,0,13), (179,18,24), (221,42,37), (246,87,62), (252,134,102), (252,179,152), (254,220,205)
+        green_1, green_2, green_3, green_4, green_5, green_6, green_7 = (226,244,221), (191,230,185), (148,211,144), (96,186,108), (50,155,81), (13,120,53), (0,68,27) 
+
+        # Negative SD Values. "Reds" color ramp, where darker reds represent more negative SD values.
+        tda[tensor <= (ct - 6 * dv), ...] *= red_1  # 67000d
+        tda[np.logical_and(tensor > (ct - 6 * dv), tensor <= (ct - 5 * dv)), ...] *= red_2  # b31218
+        tda[np.logical_and(tensor > (ct - 5 * dv), tensor <= (ct - 4 * dv)), ...] *= red_3  # dd2a25
+        tda[np.logical_and(tensor > (ct - 4 * dv), tensor <= (ct - 3 * dv)), ...] *= red_4  # f6573e
+        tda[np.logical_and(tensor > (ct - 3 * dv), tensor <= (ct - 2 * dv)), ...] *= red_5  # fc8666
+        tda[np.logical_and(tensor > (ct - 2 * dv), tensor <= (ct - 1 * dv)), ...] *= red_6  # fcb398
+        tda[np.logical_and(tensor > (ct - 1 * dv), tensor <= (ct)), ...] *= red_7  # fedccd
+
+        # Positive SD Values. "Greens" color ramp, where darker greens represent more positive SD values.
+        tda[np.logical_and(tensor > (ct + 1 * dv), tensor <= (ct)), ...] *= green_1  # e2f4dd
+        tda[np.logical_and(tensor > (ct + 2 * dv), tensor <= (ct + 1 * dv)), ...] *= green_2  # bfe6b9
+        tda[np.logical_and(tensor > (ct + 3 * dv), tensor <= (ct + 2 * dv)), ...] *= green_3  # 94d390
+        tda[np.logical_and(tensor > (ct + 4 * dv), tensor <= (ct + 3 * dv)), ...] *= green_4  # 60ba6c
+        tda[np.logical_and(tensor > (ct + 5 * dv), tensor <= (ct + 4 * dv)), ...] *= green_5  # 329b51
+        tda[np.logical_and(tensor > (ct + 6 * dv), tensor <= (ct + 5 * dv)), ...] *= green_6 # 0d7835
+        tda[tensor >= (ct + 6 * dv), ...] *= green_7  # 00441b
+        return tda
+
+
+    def _map_continuous(self, 
+                        tda: npt.NDArray[np.uint8], 
+                        tensor: npt.NDArray[np.float32], 
+                        sdn_thresh: float, 
+                        sdp_thresh: float
+                        ) -> npt.NDArray[np.uint8]:
+        tda[tensor <= sdn_thresh, ...] *= CFG_NEG_SCALE
+        tda[tensor >= sdp_thresh, ...] *= CFG_POS_SCALE
+        tda[np.logical_and(tensor > sdn_thresh, tensor < sdp_thresh), ...] *= CFG_MID_SCALE
+        return tda
 
 
     def make_image_of_(self, 
                        tensor: npt.NDArray[np.float32],
-                       central_tendency: float,
-                       deviation: float,
+                       ct: float,
+                       dv: float,
+                       type_: tuple[str, str],
+                       use_pyplot: bool = False, 
                        ) -> Image:
         """
         Create an image representation of a given tensor.
@@ -479,46 +570,38 @@ class TensorToImage:
         Note:
         - The color mapping logic is sensitive to the statistical properties of the input tensor.
         """
-        # Map the 2D tensor data to the same range as an image 0-255.
-        sdp_max = central_tendency + CFG_SD_CLIP_THRESHOLD * deviation
-            # Set the positive and negative SD thresholds for this specific tensor.
-        sdp_thresh = central_tendency + CFG_SD_POSITIVE_THRESHOLD * deviation
-        sdn_thresh = central_tendency - CFG_SD_NEGATIVE_THRESHOLD * deviation
-            # Calculate the absolute difference between the tensor data and the mean.
-        tda = np.minimum(np.abs(tensor), sdp_max).repeat(3, axis=-1).reshape((*tensor.shape, 3))
+        # If it's a 1-dimensional tensor, plot it as bar chart
+        if tensor.ndim == 1:
+            try:
+                image = tensor_to_graph(
+                    model_name=self.model_path.split("\\")[-1],
+                    tensor_name=self.tensor_name, 
+                    tensor=tensor,
+                    type_=type_,
+                    ct=ct, 
+                    dv=dv
+                )
+            except Exception as e:
+                raise RuntimeError(f"Failed to convert 1-d tensor to graph: {e}") from e
+            else:
+                return image
 
-        # Scale that range to between 0 and 255.
-        tda = 255 * ((tda - np.min(tda)) / np.ptp(tda))
+        tda, sdp_thresh, sdn_thresh = self._scale_tensor_to_0_255(tensor, ct, dv)
 
         match self.color_ramp_type :
             case "discrete":  # Discrete Colors
-                # Negative SD Values. This uses a discrete "Reds" color ramp, where darker reds represent more negative SD values.
-                tda[tensor <= (central_tendency - 6 * deviation), ...] *= (103,0,13)  # 67000d
-                tda[np.logical_and(tensor > (central_tendency - 6 * deviation), tensor <= (central_tendency - 5 * deviation)), ...] *= (179,18,24)  # b31218
-                tda[np.logical_and(tensor > (central_tendency - 5 * deviation), tensor <= (central_tendency - 4 * deviation)), ...] *= (221,42,37)  # dd2a25
-                tda[np.logical_and(tensor > (central_tendency - 4 * deviation), tensor <= (central_tendency - 3 * deviation)), ...] *= (246,87,62)  # f6573e
-                tda[np.logical_and(tensor > (central_tendency - 3 * deviation), tensor <= (central_tendency - 2 * deviation)), ...] *= (252,134,102)  # fc8666
-                tda[np.logical_and(tensor > (central_tendency - 2 * deviation), tensor <= (central_tendency - 1 * deviation)), ...] *= (252,179,152)  # fcb398
-                tda[np.logical_and(tensor > (central_tendency - 1 * deviation), tensor <= (central_tendency)), ...] *= (254,220,205)  # fedccd
-
-                # Positive SD Values. This uses a discrete "Greens" color ramp, where darker greens represent more positive SD values.
-                tda[np.logical_and(tensor > (central_tendency + 1 * deviation), tensor <= (central_tendency)), ...] *= (226,244,221)  # e2f4dd
-                tda[np.logical_and(tensor > (central_tendency + 2 * deviation), tensor <= (central_tendency + 1 * deviation)), ...] *= (191,230,185)  # bfe6b9
-                tda[np.logical_and(tensor > (central_tendency + 3 * deviation), tensor <= (central_tendency + 2 * deviation)), ...] *= (148,211,144)  # 94d390
-                tda[np.logical_and(tensor > (central_tendency + 4 * deviation), tensor <= (central_tendency + 3 * deviation)), ...] *= (96,186,108)  # 60ba6c
-                tda[np.logical_and(tensor > (central_tendency + 5 * deviation), tensor <= (central_tendency + 4 * deviation)), ...] *= (50,155,81)  # 329b51
-                tda[np.logical_and(tensor > (central_tendency + 6 * deviation), tensor <= (central_tendency + 5 * deviation)), ...] *= (13,120,53)  # 0d7835
-                tda[tensor >= (central_tendency + 6 * deviation), ...] *= (0,68,27)  # 00441b
-
+                tda = self._map_discrete(tda, tensor, ct, dv)
             case "continuous":  # Continuous Colors
-                tda[tensor <= sdn_thresh, ...] *= CFG_NEG_SCALE
-                tda[tensor >= sdp_thresh, ...] *= CFG_POS_SCALE
-                tda[np.logical_and(tensor > sdn_thresh, tensor < sdp_thresh), ...] *= CFG_MID_SCALE
-
+                tda = self._map_continuous(tda, tensor, sdn_thresh, sdp_thresh)
             case _:
                 raise ValueError("Unknown color ramp type")
 
-        return Image.fromarray(tda.astype(np.uint8), "RGB")
+        try:
+            image = Image.fromarray(tda.astype(np.uint8), "RGB")
+        except Exception as e:
+            raise RuntimeError(f"Failed to convert tensor to image: {e}") from e
+        else:
+            return image
 
 
     def _extract_tensor_from_model(self) -> npt.NDArray[np.float32]:
@@ -533,25 +616,12 @@ class TensorToImage:
 
         Raises:
             ValueError: If the model type is unknown or if the tensor extraction fails.
-            NotImplementedError: If a Stable Diffusion model is provided (currently unsupported).
         """
-        # # Initialize the model
-        # match model_file.split('.')[-1].lower():
-        #     case "gguf":
-        #         model = GGUFModel(model_file)
-        #     case "pth":
-        #         model = TorchModel(model_file)
-        #     case "stable_diffusion":
-        #         raise NotImplementedError("Stable Diffusion models are not yet supported.")
-        #     case _:
-        #         raise ValueError("Unknown Model Type")
-
-        # Validate and retrieve the tensor
-        is_valid, error_message = self.model.valid(self.tensor_name)
-        if not is_valid:
-            raise ValueError(f"Error extracting tensor from {self.model}: {error_message}")
-        else: # If it's a valid tensor, cast it as an NDArray[Float32]
+        valid, error_message = self.model.valid(self.tensor_name)
+        if valid: 
             return self.model.get_as_f32(self.tensor_name)
+        else:
+            raise ValueError(f"Error extracting tensor from {self.model}: {error_message}")
 
 
     def set_output_path_for_image(self, tk: str) -> None:
@@ -574,8 +644,10 @@ class TensorToImage:
             - If self.output_path is not set and multiple tensors are being processed,
             the method appends the tensor name to the output path.
         """
+        if not isinstance(tk, str):
+            raise TypeError(f"Tensor name must be a string, got {type(tk).__name__}")
         if "/" in tk:
-            raise ValueError("Bad tensor name")
+            raise ValueError("Bad tensor name, had '/' in it.")
 
         if self.output_path is not None:
             self.output_path: Path
@@ -590,6 +662,19 @@ class TensorToImage:
                 filename = self.output_path.name
                 self.output_path = file_path / f"tensor_to_image_{self.output_mode}{tk}.{filename}"
         return
+
+
+    def _write_to_tiff(self, tensor: npt.NDArray[np.float32]) -> None:
+        """Write tensor data to a TIFF file."""
+        match self.output_mode:
+            case "values-as-is":
+                logger.info("Saving tensor values as-is to tiff file.")
+                return write_array_to_geotiff(tensor, self.output_path)
+            case _:
+                logger.info("Saving central tendency values to tiff file.")
+                ct, dv, _ = self.get_central_tendency_and_deviation(tensor)
+                tensor = self.normalize(tensor, ct, dv)
+                return write_array_to_geotiff(tensor, self.output_path)
 
 
     def tensor_to_image(self) -> None:
@@ -630,24 +715,16 @@ class TensorToImage:
         if not self.match_1d and len(tensor.shape) == 1:
             return #continue
 
-        self.reshape_1d_tensor_into_2d_if_desired(tensor)
+        self.reshape_1d_tensor_into_2d(tensor)
 
         self.set_output_path_for_image(self.tensor_name)
 
-        # Write to geotiff if it's the file extension.
         if self.output_path.suffix.lower() in ('.tif', '.tiff', '.geotiff'):
-            if self.output_mode == "values-as-is":
-                logger.info("Saving tensor values as-is to tiff file.")
-                return write_array_to_geotiff(tensor, self.output_path)
-            else:
-                logger.info("Saving central tendency values to tiff file.")
-                central_tendency, deviation = self.return_central_tendency_and_deviation_metrics(tensor)
-                tensor = self.normalize_tensor_by_central_tendency_and_deviation(tensor, central_tendency, deviation)
-                return write_array_to_geotiff(tensor, self.output_path)
-        
-        central_tendency, deviation = self.return_central_tendency_and_deviation_metrics(tensor)
+            return self._write_to_tiff(tensor)
 
-        self.heatmap_image = img = self.make_image_of_(tensor, central_tendency, deviation)
+        ct, dv, type_ = self.get_central_tendency_and_deviation(tensor)
+
+        self.heatmap_image = img = self.make_image_of_(tensor, ct, dv, type_)
 
         if self.scale != 1.0: # Scale the image so that it fits on the screen (?)
             self.heatmap_image = img = img.resize(
@@ -666,7 +743,7 @@ class TensorToImage:
             logger.info("Displaying to screen using img...")
 
             if self.output_path is not None:
-                # TODO Find a default program that works with this.
+                # TODO: Find a default program that works with this.
                 # subprocess.call((self.show_with, self.output_path))  # noqa: S603
                 img.show()
             else:
@@ -685,7 +762,7 @@ def create_parser() -> argparse.ArgumentParser:
             """\
             Information on output modes:
               devs-*:
-                overall: Calculates the standard deviation deviation from the mean.
+                overall: Calculates the standard deviation from the mean.
                          By default, values below the mean will be red and values above it will be green.
                 rows   : Same as above, except the calculation is based on rows.
                 cols:  : Same as above, except the calculation is based on columns.
@@ -772,7 +849,7 @@ def create_parser() -> argparse.ArgumentParser:
         NOTE: If the program is started using start.bat
         the options "mean-devs-overall", "mean-devs-rows", "mean-devs-cols" are available as aliases for
         "devs-overall", "devs-rows", "devs-cols", as well as "median-devs-overall", "median-devs-rows", "median-devs-cols"
-        overall: Calculate the mean and standard deviation over the entire tensor.
+        overall: Calculate the mean and standard dv over the entire tensor.
         rows   : Same as above, except the calculation is based on rows.
         cols   : Same as above, except the calculation is based on columns.
         """,

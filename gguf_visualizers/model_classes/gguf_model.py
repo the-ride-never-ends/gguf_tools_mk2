@@ -15,7 +15,7 @@ from .model_abstract_class import Model
 from .quantized_class import Quantized_Q8_0
 
 
-from logger.logger import Logger
+from logger_.logger import Logger
 logger = Logger(logger_name=__name__)
 
 

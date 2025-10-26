@@ -9,7 +9,7 @@ from typing import Any, Callable
 
 
 from gguf.gguf_reader import GGUFReader, ReaderField, ReaderTensor
-from logger.logger import Logger
+from logger_.logger import Logger
 logger = Logger(logger_name=__name__)
 
 

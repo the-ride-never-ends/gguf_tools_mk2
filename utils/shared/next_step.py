@@ -1,6 +1,6 @@
 import re
 
-from logger.logger import Logger
+from logger_.logger import Logger
 logger = Logger(logger_name=__name__,log_level=20)
 
 
@@ -19,15 +19,15 @@ def next_step(message: str, step: int=None, stop: bool=False):
             if result != "y":
                 raise KeyboardInterrupt(f"scrape_the_law program stopped at Step {current_step}.")
             else:
-                logger.info(message, f=True)
+                logger.info(message)
                 return
         else:
             result = input(f"Continue next step? y/n: ")
             if result != "y":
                 raise KeyboardInterrupt(f"scrape_the_law program stopped at step.")
             else:
-                logger.info(message, f=True)
+                logger.info(message)
                 return
     else:
-        logger.info(message, f=True)
+        logger.info(message)
         return

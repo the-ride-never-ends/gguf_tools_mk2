@@ -16,3 +16,5 @@ scipy
 openpyxl
 torch
 safetensors
+huggingface-hub
+pywavelets

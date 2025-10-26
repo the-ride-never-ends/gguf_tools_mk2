@@ -3,19 +3,21 @@ import asyncio
 from io import StringIO
 import importlib
 import os
+from pathlib import Path
 import sys
 
 
-from config.config import PROJECT_ROOT
-from logger.logger import Logger
-logger = Logger(logger_name=__name__)
+from logger import logger
 
-
-GGUF_TOOLS_PATH = os.path.join(PROJECT_ROOT, "gguf_tools")
-GGUF_VISUALIZERS_PATH = os.path.join(PROJECT_ROOT, "gguf_visualizers")
 
 from gguf_visualizers.tensor_comparison_to_image import TensorComparisonToImage
 from gguf_visualizers.tensor_to_image import TensorToImage
+from gguf_tools.tensor_stats import TensorStats
+
+
+ROOT_DIR = Path(__file__).parent
+GGUF_TOOLS_PATH = ROOT_DIR / "gguf_tools"
+GGUF_VISUALIZERS_PATH = ROOT_DIR / "gguf_visualizers"
 
 
 def _get_parser_help_as_list(parser: argparse.ArgumentParser) -> list[str]:
@@ -43,15 +45,13 @@ def _get_parser_help_as_list(parser: argparse.ArgumentParser) -> list[str]:
 
     return help_list
 
-def get_files_in_directory(path: str):
-    return [
-        file for file in os.listdir(path) if os.path.isfile(os.path.join(path, file))
-    ]
+def get_files_in_directory(path: str | Path):
+    path = Path(path)
+    return [file.name for file in path.iterdir() if file.is_file()]
 
-def get_folders_in_directory(path: str):
-    return [
-        file for file in os.listdir(path) if not os.path.isfile(os.path.join(path, file))
-    ]
+def get_folders_in_directory(path: str | Path):
+    path = Path(path)
+    return [folder.name for folder in path.iterdir() if folder.is_dir()]
 
 def _choose_gguf_tool() -> str:
     """
@@ -75,15 +75,13 @@ def _choose_gguf_tool() -> str:
     available_modules = []
     for path in [GGUF_TOOLS_PATH, GGUF_VISUALIZERS_PATH]:
         _available_modules = sorted(
-            # tool for tool in os.listdir(path)
-            # if os.path.isfile(os.path.join(path, tool))
-            os.path.splitext(tool)[0] for tool in os.listdir(path)
-            if os.path.isfile(os.path.join(path, tool)) and tool.endswith('.py')
+            file.stem for file in path.glob("*.py") if file.is_file()
         )
         available_modules.extend(_available_modules)
-    tool_list = "\n".join(f"{i}. {tool}" for i, tool in enumerate(available_modules, start=1))
 
-    logger.info(f"Available gguf_tools:\n{tool_list}",f=True)
+    tool_list = "   \n".join(f"{idx}. {tool}" for idx, tool in enumerate(available_modules, start=1))
+
+    print(f"Available gguf_tools:\n{tool_list}")
 
     # print(f"\nAvailable gguf_tools:\n{tool_list}")
 
@@ -99,13 +97,13 @@ def _choose_gguf_tool() -> str:
             index = int(gguf_tool) - 1
             if 0 <= index < len(available_modules):
                 tool = available_modules[index]
-                logger.debug(f"Valid input: {gguf_tool}\n Loading {tool}...", f=True)
+                logger.debug(f"Valid input: {gguf_tool}\n Loading {tool}...")
                 return tool
             else:
                 print(f"Invalid number. Please enter a number between 1 and {len(available_modules)}.")
         else:
             if gguf_tool in available_modules:
-                logger.debug(f"Valid input: {gguf_tool}\n Loading {gguf_tool}...", f=True)
+                logger.debug(f"Valid input: {gguf_tool}\n Loading {gguf_tool}...")
                 return gguf_tool
             else:
                 print("Invalid tool name. Please enter a valid tool name or number.")
@@ -126,7 +124,7 @@ def _choose_gguf_tools_arguments(gguf_tool: str) -> dict:
             logger.error(f"Failed to import module: {e}")
             return None
 
-    logger.debug(f"gguf_tool: {gguf_tool}\ntype: {type(gguf_tool)}",f=True)
+    logger.debug(f"gguf_tool: {gguf_tool}\ntype: {type(gguf_tool)}")
     parser: argparse.ArgumentParser = gguf_tool.create_parser()
 
     # Create a list of the helpers arguments.
@@ -149,7 +147,7 @@ def _choose_gguf_tools_arguments(gguf_tool: str) -> dict:
             continue
 
         chosen_args = [arg.strip().lower() for arg in selected_args.split(',')]
-        logger.debug(f"chosen_args\n{chosen_args}",f=True)
+        logger.debug(f"chosen_args\n{chosen_args}")
         invalid_modules = [arg for arg in chosen_args if arg not in arg_list]
 
         if invalid_modules:
@@ -167,7 +165,6 @@ async def main():
 
     gguf_tool = _choose_gguf_tool()
     logger.debug(f"gguf_tool: {gguf_tool}")
-    #kwargs = {} # _choose_gguf_tools_arguments(gguf_tool)
 
     if "tensor_comparison_to_image" in gguf_tool:
         logger.info("Loading tensor_comparison_to_image...")
@@ -178,6 +175,11 @@ async def main():
         logger.info("Loading tensor_to_image...")
         run = TensorToImage()
         run.tensor_to_image()
+
+    if "tensor_stats" in gguf_tool:
+        logger.info("Loading tensor_stats...")
+        run = TensorStats()
+        run.tensor_stats()
 
     logger.info("End __main__")
 

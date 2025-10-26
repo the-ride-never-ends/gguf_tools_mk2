@@ -38,7 +38,7 @@ from config.config import (
     CFG_POS_SCALE,
     CFG_MID_SCALE
 )
-from logger.logger import Logger
+from logger_.logger import Logger
 logger = Logger(logger_name=__name__)
 
 
@@ -258,7 +258,7 @@ class TensorComparisonToImage:
             self.deviation = std_dev
 
             # Log tensor values for diagnostics
-            logger.info(f"* Tensor ({self.tensor_name} from {model_name}) stats\nmean = {mean}\nsd = {std_dev}\n\nmax = {tensor.max()}\nmin = {tensor.min()}",f=True)
+            logger.info(f"* Tensor ({self.tensor_name} from {model_name}) stats\nmean = {mean}\nsd = {std_dev}\n\nmax = {tensor.max()}\nmin = {tensor.min()}")
 
             # Normalize arrays to make their means directly comparable.
             normalized = (tensor - mean) / std_dev
@@ -305,7 +305,7 @@ class TensorComparisonToImage:
                     MAD = {mad}
                     max = {np.max(tensor)},
                     min = {np.min(tensor)}
-            """,f=True)
+            """)
  
             logger.info("Normalizing array by median...")
             normalized = (tensor - median) / mad
@@ -316,7 +316,7 @@ class TensorComparisonToImage:
         logger.info(f"""
             * Median comparison:
                 median_diff = {median_diff_array}
-        """,f=True)
+        """)
 
         return median_diff_array
 
@@ -337,7 +337,7 @@ class TensorComparisonToImage:
                 min = {diff_array.min()}, 
                 mean = {np.mean(diff_array, dtype=np.float64)}, 
                 sd = {np.std(diff_array, dtype=np.float64)}
-            """,f=True)
+            """)
 
         logger.info(f"Applying colormap '{color_mode}'...")
         match color_mode:
@@ -544,7 +544,7 @@ class TensorComparisonToImage:
 
         # Log basic stats for both tensors
         for i in [1, 2]:
-            logger.info(f"Tensor{i} ({self.tensor_name} from {getattr(self, f'model_file{i}')}) stats\nmax = {np.max(getattr(self, f'tensor{i}')):.4f}\nmin = {np.min(getattr(self, f'tensor{i}')):.4f}",f=True)
+            logger.info(f"Tensor{i} ({self.tensor_name} from {getattr(self, f'model_file{i}')}) stats\nmax = {np.max(getattr(self, f'tensor{i}')):.4f}\nmin = {np.min(getattr(self, f'tensor{i}')):.4f}")
 
         logger.info("Checking for identical tensors...")
         if np.array_equal(self.tensor1, self.tensor2):

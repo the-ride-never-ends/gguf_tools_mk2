@@ -4,7 +4,7 @@ from typing import Any, Iterable
 import numpy as np
 import numpy.typing as npt
 
-from logger.logger import Logger
+from logger_.logger import Logger
 logger = Logger(logger_name=__name__)
 
 from gguf.quants import Q8_0
@@ -57,32 +57,31 @@ class Quantized_Q8_0(_Quantized):  # noqa: N801
     block_size = 32
     dtype = np.dtype([("d", "f2"), ("qs", "i1", (block_size,))])
 
+    # Much faster implementation of block quantization contributed by @Cebtenzzre
+    @classmethod
+    def _quantize_blocks(cls, blocks: npt.NDArray[Any]) -> Iterable[tuple[Any, Any]]:
+
+        # Find the maximum absolute value in each block, divided by 127
+        d = abs(blocks).max(axis=1) / np.float32(127)
+
+        # Divide each block by its scaling factor and round
+        with np.errstate(divide="ignore"):
+            qs = (blocks / d[:, None]).round()
+
+        # Handle blocks that are all zeros
+        qs[d == 0] = 0
+        yield from zip(d, qs)
+
     # Mini Q8_0 quantization in Python!
     @classmethod
     def quantize(cls, arr: npt.NDArray[np.float32]) -> npt.NDArray[np.uint8]:
         n_blocks = arr.size // cls.block_size
         blocks = arr.reshape((n_blocks, cls.block_size))
-
-        # Much faster implementation of block quantization contributed by @Cebtenzzre
-        def quantize_blocks(blocks: npt.NDArray[Any]) -> Iterable[tuple[Any, Any]]:
-
-            # Find the maximum absolute value in each block, divided by 127
-            d = abs(blocks).max(axis=1) / np.float32(127)
-
-            # Divide each block by its scaling factor and round
-            with np.errstate(divide="ignore"):
-                qs = (blocks / d[:, None]).round()
-
-            # Handle blocks that are all zeros
-            qs[d == 0] = 0
-            yield from zip(d, qs)
-
         return np.fromiter(
-            quantize_blocks(blocks),
+            cls._quantize_blocks(blocks),
             count=n_blocks,
             dtype=cls.dtype,
         )
-
 
     @classmethod
     def dequantize(
@@ -108,11 +107,11 @@ class Quantized_Q8_0(_Quantized):  # noqa: N801
         results = np.array(results)
 
         #logger.debug(f"results: {results}")
-        logger.debug(f"results shape: {results.shape}",f=True)
+        logger.debug(f"results shape: {results.shape}")
 
         results = results.flatten()
         #logger.debug(f"results: {results}")
-        logger.debug(f"results shape: {results.shape}",f=True)
+        logger.debug(f"results shape: {results.shape}")
         return results
 
 
@@ -126,12 +125,12 @@ class Quantized_Q8_0(_Quantized):  # noqa: N801
         # # logger.debug(f"d_expanded shape: {d_expanded.shape}")
         # # logger.debug(f"qs_data shape: {qs_data.shape}")
 
-        # # logger.debug(f"d_expanded:\n{d_expanded}",f=True)
-        # # logger.debug(f"qs_data:\n{qs_data}",f=True)
+        # # logger.debug(f"d_expanded:\n{d_expanded}")
+        # # logger.debug(f"qs_data:\n{qs_data}")
         
         # # # Perform the multiplication with correct broadcasting
         # # results = d_expanded * qs_data
-        # # logger.debug(f"result: {result}",f=True,t=30)
+        # # logger.debug(f"result: {result}"")
 
         # return results.flatten()
         # # 

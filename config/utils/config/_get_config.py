@@ -32,10 +32,9 @@ def get_config(path:str, constant:str) -> Any | bool:
         if isinstance(current_data, dict) and key in current_data:
             if i == len(keys) - 1:
                 full_key = '.'.join(keys[:i+1])
-                num_dashes_needed = len(full_key) * len(str(current_data[key]))
-                dashes = "-" * num_dashes_needed
+                dashes = "-" * 20
                 current_data_key = current_data[key] if "PRIVATE" not in full_key else "XXXXXXXXXX"
-                print(f"{dashes}\n{full_key}: | {current_data_key} |")
+                #print(f"{dashes}\n{full_key}: | {current_data_key} |")
                 return current_data[key]
             else:
                 current_data = current_data[key]

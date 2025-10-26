@@ -1,6 +1,6 @@
 import csv
 
-from logger.Logger import Logger
+from logger_.Logger import Logger
 
 logger = Logger(logger_name=__name__)
 

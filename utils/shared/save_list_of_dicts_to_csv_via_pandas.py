@@ -4,7 +4,7 @@ import os
 import pandas as pd
 
 
-from logger.logger import Logger
+from logger_.logger import Logger
 from config.config import CSV_OUTPUT_FOLDER
 
 

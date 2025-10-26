@@ -31,7 +31,7 @@ Usage Example:
     logger.error("An error occurred")
 
 Advanced Usage:
-    logger.info("Important message", f=True)  # Formats message with asterisks
+    logger.info("Important message")  # Formats message with asterisks
     logger.debug("Pausing after this", t=2)   # Pauses execution for 2 seconds after logging
     logger.warning("Silent warning", off=True)  # Logs message but doesn't print to console
 

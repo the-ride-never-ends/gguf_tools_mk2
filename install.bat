@@ -9,18 +9,18 @@ if %errorlevel% neq 0 (
 )
 
 REM Check if the virtual environment already exists
-if exist venv (
+if exist .venv (
     echo Virtual environment already exists. Skipping creation.
 ) else (
     REM Create a virtual environment if it doesn't exist
-    echo Creating a virtual environment with Python 3.11...
-    python3.11 -m venv venv
+    echo Creating a virtual environment with Python 3.12...
+    python3.12 -m venv .venv
     REM Verify Python version compatibility 
 )
 
 REM Activate the virtual environment
-echo Activating the virtual environment 'venv' with Python 3.11...
-call venv\Scripts\activate.bat
+echo Activating the virtual environment '.venv' with Python 3.12...
+call .venv\Scripts\activate.bat
 
 REM Install required packages from requirements.txt
 if exist requirements.txt (

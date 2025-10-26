@@ -1,7 +1,7 @@
 from functools import wraps
 from typing import Any, Callable
 
-from logger import Logger
+from logger_ import Logger
 
 def if_not_results(message: str=None) -> Callable:
     """

@@ -1,7 +1,7 @@
 import os
 
 from .utils.config._get_config import get_config as config
-from logger.logger import Logger
+from logger_.logger import Logger
 logger = Logger(logger_name=__name__)
 
 # Define hard-coded constants
